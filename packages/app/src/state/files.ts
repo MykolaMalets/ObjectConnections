@@ -1,4 +1,4 @@
-// Opening and saving map files through a StorageProvider.
+// Opening, saving and re-reading map files through a StorageProvider.
 
 import type { Doc } from '@oc/core';
 import { serializeDoc, validate } from '@oc/core';
@@ -9,28 +9,35 @@ import { Session } from './store.ts';
 const displayName = (fileName: string) =>
   fileName.endsWith(FILE_EXTENSION) ? fileName.slice(0, -FILE_EXTENSION.length) : fileName;
 
-export async function openFile(host: ExtensionHost): Promise<void> {
-  const ws = host.ws;
-  const provider = host.defaultStorage();
-  const ref = await provider.pickOpen();
-  if (!ref) return;
-  const { text, version } = await provider.read(ref);
+/** Parses file content. Returns the document or the reasons it cannot be used. */
+function parseDoc(text: string): { doc: Doc } | { problems: string[] } {
   let doc: Doc;
   try {
     doc = JSON.parse(text) as Doc;
   } catch {
-    alert(`Файл «${ref.name}» не является картой: это не JSON.`);
+    return { problems: ['это не JSON'] };
+  }
+  if (typeof doc !== 'object' || doc === null || doc.format !== 'ocmap') {
+    return { problems: ['нет поля format: "ocmap"'] };
+  }
+  const problems = validate(doc);
+  return problems.length ? { problems } : { doc };
+}
+
+export async function openFile(host: ExtensionHost): Promise<void> {
+  const provider = host.defaultStorage();
+  const ref = await provider.pickOpen();
+  if (!ref) return;
+  const { text, version } = await provider.read(ref);
+  const parsed = parseDoc(text);
+  if ('problems' in parsed) {
+    alert(`Файл «${ref.name}» не открыт:\n${parsed.problems.slice(0, 5).join('\n')}`);
     return;
   }
-  const problems = typeof doc === 'object' && doc !== null && doc.format === 'ocmap' ? validate(doc) : ['нет поля format: "ocmap"'];
-  if (problems.length) {
-    alert(`Файл «${ref.name}» повреждён и не открыт:\n${problems.slice(0, 5).join('\n')}`);
-    return;
-  }
-  const session = new Session(doc, displayName(ref.name));
+  const session = new Session(parsed.doc, displayName(ref.name));
   session.file = ref;
   session.fileVersion = version;
-  ws.add(session);
+  host.ws.add(session);
 }
 
 /**
@@ -39,7 +46,6 @@ export async function openFile(host: ExtensionHost): Promise<void> {
  * of overwriting.
  */
 export async function saveFile(host: ExtensionHost, session: Session, auto = false): Promise<void> {
-  const ws = host.ws;
   if (session.saving) return;
   if (!session.file) {
     if (auto) return;
@@ -59,16 +65,47 @@ export async function saveFile(host: ExtensionHost, session: Session, auto = fal
         !auto && confirm(`Файл «${session.file.name}» изменён вне редактора. Перезаписать его текущей версией?`);
       if (!overwrite) return;
     }
-    const revision = session.history.revision;
+    const history = session.history;
+    const revision = history.revision;
     const { version } = await provider.write(session.file, serializeDoc(session.doc));
     session.fileVersion = version;
-    session.savedRevision = revision;
+    if (session.history === history) session.savedRevision = revision;
     session.conflict = false;
   } catch (error) {
     if (!auto) alert(`Не удалось сохранить: ${error instanceof Error ? error.message : String(error)}`);
     else console.warn('autosave failed', error);
   } finally {
     session.saving = false;
-    ws.notify();
+    host.ws.notify();
+  }
+}
+
+/**
+ * Picks up changes made to the file outside the editor (an agent, another
+ * device). Without unsaved edits the document is reloaded silently; with
+ * them the session is marked as conflicting and autosave pauses.
+ */
+export async function syncFromStorage(host: ExtensionHost, session: Session): Promise<void> {
+  if (!session.file || session.saving || session.editing) return;
+  const provider = host.storageFor(session.file);
+  try {
+    if ((await provider.version(session.file)) === session.fileVersion) return;
+    if (session.dirty) {
+      if (!session.conflict) {
+        session.conflict = true;
+        host.ws.notify();
+      }
+      return;
+    }
+    const { text, version } = await provider.read(session.file);
+    const parsed = parseDoc(text);
+    // A half-written or broken file is ignored; the next check tries again.
+    if ('problems' in parsed || session.dirty || session.saving) return;
+    session.replaceDoc(parsed.doc);
+    session.fileVersion = version;
+    session.conflict = false;
+    host.ws.notify();
+  } catch (error) {
+    console.warn('sync from storage failed', error);
   }
 }

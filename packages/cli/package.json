@@ -1,0 +1,10 @@
+{
+  "name": "@oc/cli",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": { "oc": "./src/main.ts" },
+  "dependencies": {
+    "@oc/core": "*"
+  }
+}

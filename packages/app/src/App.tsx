@@ -2,7 +2,7 @@ import { getNode } from '@oc/core';
 import { useEffect, useMemo, useSyncExternalStore } from 'react';
 import { builtinExtensions } from './ext/builtin/index.ts';
 import { ExtensionHost } from './ext/host.ts';
-import { openFile, saveFile } from './state/files.ts';
+import { openFile, saveFile, syncFromStorage } from './state/files.ts';
 import type { Session } from './state/store.ts';
 import {
   Workspace,
@@ -21,6 +21,7 @@ import {
 import { MapCanvas } from './view/MapCanvas.tsx';
 
 const AUTOSAVE_DELAY_MS = 1500;
+const STORAGE_CHECK_MS = 2000;
 
 function createHost(): ExtensionHost {
   const ws = new Workspace();
@@ -96,6 +97,20 @@ export function App() {
     }, AUTOSAVE_DELAY_MS);
     return () => clearTimeout(timer);
   }, [host, ws, version]);
+
+  // Outside changes (an agent editing the file, another device) are picked up while the window is visible.
+  useEffect(() => {
+    const check = () => {
+      if (document.visibilityState !== 'visible') return;
+      for (const s of ws.sessions) void syncFromStorage(host, s);
+    };
+    const timer = setInterval(check, STORAGE_CHECK_MS);
+    window.addEventListener('focus', check);
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener('focus', check);
+    };
+  }, [host, ws]);
 
   const closeSession = (s: Session) => {
     if (s.dirty && !confirm(`В «${s.name}» есть несохранённые изменения. Закрыть без сохранения?`)) return;

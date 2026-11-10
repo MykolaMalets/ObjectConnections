@@ -31,7 +31,9 @@ export interface Editing {
 /** One open file with its view state. View state is not part of undo history. */
 export class Session {
   readonly id = newId();
-  readonly history: History;
+  history: History;
+  /** Increases when the whole document is replaced; part of every view cache key. */
+  epoch = 0;
   name: string;
   sheetId: Id;
   selection: Id | null;
@@ -51,10 +53,25 @@ export class Session {
   conflict = false;
 
   constructor(doc: Doc, name: string) {
-    this.history = new History(doc, { now: () => new Date().toISOString() });
+    this.history = Session.historyFor(doc);
     this.name = name;
     this.sheetId = doc.sheets[0]?.id ?? '';
     this.selection = doc.sheets[0]?.rootIds[0] ?? null;
+  }
+
+  static historyFor(doc: Doc): History {
+    return new History(doc, { now: () => new Date().toISOString() });
+  }
+
+  /**
+   * Swaps in a document read again from storage. Undo history starts over;
+   * selection and drill-down survive where the same node ids still exist.
+   */
+  replaceDoc(doc: Doc): void {
+    this.history = Session.historyFor(doc);
+    this.savedRevision = 0;
+    this.editing = null;
+    this.epoch++;
   }
 
   get doc(): Doc {

@@ -52,7 +52,7 @@ export function MapCanvas({ ws, session }: { ws: Workspace; session: Session }) 
   }, []);
 
   const getLayout = (): LayoutResult => {
-    const key = `${session.id}|${session.history.revision}|${session.sheetId}|${session.focusId}`;
+    const key = `${session.id}|${session.epoch}|${session.history.revision}|${session.sheetId}|${session.focusId}`;
     if (cache.current?.key !== key) {
       const layout = layoutRoots(session.doc, session.viewRoots, session.sheet?.structure, measure, !!session.focusId);
       cache.current = { key, layout };

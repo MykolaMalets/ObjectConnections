@@ -5,3 +5,4 @@ export * from './history.ts';
 export * from './validate.ts';
 export * from './fragment.ts';
 export * from './commands.ts';
+export * from './outline.ts';
