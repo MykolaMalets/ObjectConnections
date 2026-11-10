@@ -2,10 +2,14 @@
   "name": "objectconnections",
   "private": true,
   "type": "module",
-  "workspaces": ["packages/*"],
+  "workspaces": [
+    "packages/*"
+  ],
   "scripts": {
+    "dev": "npm run dev -w @oc/app",
+    "build": "npm run build -w @oc/app",
     "test": "node --test \"packages/*/test/*.test.ts\"",
-    "typecheck": "tsc -p tsconfig.json"
+    "typecheck": "tsc -p packages/core && tsc -p packages/app"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
