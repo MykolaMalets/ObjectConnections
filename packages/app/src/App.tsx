@@ -18,6 +18,7 @@ import {
   selectSheet,
   undo,
 } from './state/store.ts';
+import { DialogHost, confirmDialog, promptDialog } from './ui/dialogs.tsx';
 import { MapCanvas } from './view/MapCanvas.tsx';
 
 const AUTOSAVE_DELAY_MS = 1500;
@@ -112,8 +113,9 @@ export function App() {
     };
   }, [host, ws]);
 
-  const closeSession = (s: Session) => {
-    if (s.dirty && !confirm(`В «${s.name}» есть несохранённые изменения. Закрыть без сохранения?`)) return;
+  const closeSession = async (s: Session) => {
+    const unsaved = s.dirty && (s.file || s.history.canUndo);
+    if (unsaved && !(await confirmDialog(`В «${s.name}» есть несохранённые изменения. Закрыть без сохранения?`, 'Закрыть'))) return;
     ws.close(s);
   };
 
@@ -125,6 +127,7 @@ export function App() {
 
   return (
     <div className="app">
+      <DialogHost />
       <div className="toolbar" onMouseDown={keepFocus}>
         <button onClick={() => newSession(ws)}>Новая</button>
         <button onClick={() => void openFile(host)} title="Ctrl+O">Открыть</button>
@@ -156,6 +159,11 @@ export function App() {
         <Menu label="Импорт…" items={[...host.importers.values()]} onPick={(id) => void host.runImport(id)} />
         <span className="spacer" />
         {session?.conflict && <span className="warning">Файл изменён вне редактора — автосохранение остановлено</span>}
+        {session?.saveError && !session.conflict && (
+          <span className="warning" title={session.saveError}>
+            Не сохранено — нажмите «Сохранить»
+          </span>
+        )}
         {[...host.panels.values()].map((p) => (
           <button key={p.id} className={p.id === host.activePanel ? 'pressed' : ''} onClick={() => host.togglePanel(p.id)}>
             {p.title}
@@ -187,7 +195,7 @@ export function App() {
               title="Закрыть"
               onClick={(e) => {
                 e.stopPropagation();
-                closeSession(s);
+                void closeSession(s);
               }}
             >
               ×
@@ -231,8 +239,8 @@ export function App() {
               key={sheet.id}
               className={sheet.id === session.sheetId ? 'sheet active' : 'sheet'}
               onClick={() => selectSheet(ws, sheet.id)}
-              onDoubleClick={() => {
-                const title = prompt('Название листа', sheet.title);
+              onDoubleClick={async () => {
+                const title = await promptDialog('Название листа', sheet.title);
                 if (title) renameSheet(ws, sheet.id, title);
               }}
             >

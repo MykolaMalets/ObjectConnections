@@ -4,6 +4,7 @@ import { validate } from '@oc/core';
 import { Session, execute } from '../state/store.ts';
 import type { Workspace } from '../state/store.ts';
 import type { FileRef, StorageProvider } from '../storage/provider.ts';
+import { alertDialog } from '../ui/dialogs.tsx';
 import type {
   Command,
   Disposable,
@@ -122,7 +123,7 @@ export class ExtensionHost {
     try {
       await command.run(this.editor);
     } catch (error) {
-      alert(`«${command.title}»: ${error instanceof Error ? error.message : String(error)}`);
+      void alertDialog(`«${command.title}»: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
@@ -141,7 +142,7 @@ export class ExtensionHost {
       const blob = typeof result === 'string' ? new Blob([result], { type: exporter.mime }) : result;
       downloadBlob(blob, `${session.name}.${exporter.extension}`);
     } catch (error) {
-      alert(`Экспорт «${exporter.title}» не удался: ${error instanceof Error ? error.message : String(error)}`);
+      void alertDialog(`Экспорт «${exporter.title}» не удался: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
@@ -157,7 +158,7 @@ export class ExtensionHost {
       if (problems.length) throw new Error(problems.slice(0, 3).join('; '));
       this.editor.openDoc(doc, file.name.replace(/\.[^.]+$/, ''));
     } catch (error) {
-      alert(`Импорт «${importer.title}» не удался: ${error instanceof Error ? error.message : String(error)}`);
+      void alertDialog(`Импорт «${importer.title}» не удался: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 }

@@ -26,7 +26,15 @@ export interface StorageProvider {
   read(ref: FileRef): Promise<FileContent>;
   /** Current version token without reading the content; used to detect outside changes. */
   version(ref: FileRef): Promise<string>;
+  /** Returns the new version token, or '' when it cannot be determined. */
   write(ref: FileRef, text: string): Promise<{ version: string }>;
+  /**
+   * Makes sure the file can be written, asking the user if needed. Called
+   * only from a user gesture (a manual save). False when access is refused.
+   */
+  authorize?(ref: FileRef): Promise<boolean>;
+  /** True when both references point at the same stored file. */
+  same?(a: FileRef, b: FileRef): Promise<boolean>;
 }
 
 export const FILE_EXTENSION = '.ocmap';

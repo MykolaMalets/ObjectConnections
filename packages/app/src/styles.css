@@ -218,3 +218,56 @@ button.pressed {
   border: 1px solid #cfd6e2;
   border-radius: 6px;
 }
+
+.toolbar {
+  flex-wrap: wrap;
+  overflow: visible;
+}
+
+.dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(20, 30, 50, 0.35);
+}
+
+.dialog {
+  width: min(420px, 90vw);
+  padding: 16px;
+  background: #fff;
+  border-radius: 10px;
+  box-shadow: 0 10px 40px rgba(20, 30, 50, 0.3);
+}
+
+.dialog p {
+  margin: 0 0 12px;
+  white-space: pre-wrap;
+}
+
+.dialog input {
+  width: 100%;
+  margin-bottom: 12px;
+  padding: 6px 8px;
+  font: inherit;
+  border: 1px solid #cfd6e2;
+  border-radius: 6px;
+}
+
+.dialog-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+button.primary {
+  background: #2f6fed;
+  border-color: #2f6fed;
+  color: #fff;
+}
+
+button.primary:hover:not(:disabled) {
+  background: #245bd0;
+}

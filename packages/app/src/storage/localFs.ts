@@ -9,7 +9,13 @@ interface PickerWindow {
   showSaveFilePicker?: (options: object) => Promise<FileSystemFileHandle>;
 }
 
-const TYPES = [{ description: 'ObjectConnections map', accept: { 'application/json': [FILE_EXTENSION] } }];
+/** Permission methods of file handles; not yet in TypeScript's DOM library. */
+interface PermissionHandle {
+  queryPermission?: (options: { mode: 'read' | 'readwrite' }) => Promise<PermissionState>;
+  requestPermission?: (options: { mode: 'read' | 'readwrite' }) => Promise<PermissionState>;
+}
+
+const TYPES =[{ description: 'ObjectConnections map', accept: { 'application/json': [FILE_EXTENSION] } }];
 
 const picker = (): PickerWindow => window as unknown as PickerWindow;
 
@@ -55,7 +61,24 @@ export const localFs: StorageProvider = {
     const writable = await handle.createWritable();
     await writable.write(text);
     await writable.close();
-    return { version: String((await handle.getFile()).lastModified) };
+    // The write is done; failing to read the timestamp back must not report it as failed.
+    const version = await handle.getFile().then(
+      (file) => String(file.lastModified),
+      () => '',
+    );
+    return { version };
+  },
+
+  async authorize(ref) {
+    const handle = ref.handle as PermissionHandle;
+    if (!handle.queryPermission || !handle.requestPermission) return true;
+    const options = { mode: 'readwrite' as const };
+    if ((await handle.queryPermission(options)) === 'granted') return true;
+    return (await handle.requestPermission(options)) === 'granted';
+  },
+
+  async same(a, b) {
+    return (a.handle as FileSystemFileHandle).isSameEntry(b.handle as FileSystemFileHandle);
   },
 };
 

@@ -49,6 +49,8 @@ export class Session {
   fileVersion = '';
   savedRevision = 0;
   saving = false;
+  /** Why the last save failed. While set, autosave waits for a successful manual save. */
+  saveError: string | null = null;
   /** The file changed outside the editor since it was read; autosave is paused. */
   conflict = false;
 
