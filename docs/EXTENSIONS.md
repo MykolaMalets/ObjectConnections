@@ -30,7 +30,7 @@ export const myExtension: Extension = {
 | `ctx.importers` | `Importer` — текст файла → `Doc` | Меню «Импорт…» (скрыто, пока импортёров нет) |
 | `ctx.panels` | `Panel` — React-содержимое боковой панели | Кнопка-переключатель справа на панели инструментов |
 | `ctx.storage` | `StorageProvider` — место хранения файлов | «Открыть» и «Сохранить»; первый зарегистрированный — по умолчанию |
-| `ctx.reminderSinks` | `ReminderSink` — внешний календарь для напоминаний | Пока только реестр; интерфейс напоминаний — задача бэклога |
+| `ctx.reminderSinks` | `ReminderSink` — внешний календарь для напоминаний | Состояние и кнопка подключения в панели «Напоминания»; синхронизация — сама после изменения напоминаний |
 
 Каждый `register` возвращает функцию отмены регистрации. Повторная регистрация того же `id` — ошибка.
 
@@ -72,7 +72,7 @@ export const myExtension: Extension = {
 
 **Google Drive (`google.drive`).** Сделано: `ext/google/drive.ts`, подробности в `docs/GOOGLE.md`. `handle` — `{ id }` файла, `version` — поле `version` Drive, `canAutosave: true`, `pickOpen` — Google Picker. Отдельной команды входа нет: вход открывается сам при «Открыть» и «Сохранить».
 
-**Google Calendar (`google.calendar`).** `ReminderSink`: `upsert` создаёт или обновляет событие с названием узла и ссылкой на карту, возвращает `calendarEventId`; `remove` удаляет событие. Использует тот же вход Google, что и Drive, — общий код входа вынести в `ext/google/auth.ts`.
+**Google Calendar (`google.calendar`).** Сделано: `ext/google/calendar.ts`, подробности в `docs/GOOGLE.md`. `ReminderSink.sync(doc)` приводит календарь в соответствие со всеми напоминаниями карты; вход общий с Диском (`ext/google/auth.ts`).
 
 **Google Docs (`google.docs`).** `Exporter`, возвращающий `Blob` не подходит: документ создаётся в облаке. Делается командой: взять текст из `exportMarkdown`-подобной функции, создать документ через Docs API, записать ссылку в `link` узла через `apply`.
 

@@ -92,6 +92,7 @@ export class ExtensionHost {
           this.ws.notify();
         };
       },
+      list: () => [...map.values()],
     };
   }
 

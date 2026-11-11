@@ -87,19 +87,29 @@ export interface Panel {
 }
 
 /**
- * Pushes node reminders to an outside calendar. The editor calls `upsert`
- * when a reminder is created or changed and stores the returned event id in
- * `reminder.calendarEventId`; `remove` is called when it is deleted.
+ * An outside calendar that receives the reminders of a document, so they reach
+ * the user while the editor is closed. The reminders extension calls `sync`
+ * after the reminders of the active document change (see state/calendarPlan.ts).
  */
 export interface ReminderSink {
   id: string;
   title: string;
-  upsert(reminder: Reminder, node: MapNode, doc: Doc): Promise<{ calendarEventId: string }>;
-  remove(reminder: Reminder): Promise<void>;
+  /**
+   * `ready`: syncing works; `sign-in`: needs `connect` from a user action; `error`: see `message`.
+   * `granted`: the user allowed access before, so `connect` only renews it and may be
+   * called on any user action (adding a reminder) without surprising the user.
+   */
+  status(): { state: 'ready' | 'sign-in' | 'error'; message?: string; granted?: boolean };
+  /** Asks the user for access. Call only while handling a click. */
+  connect(): Promise<void>;
+  /** Makes the calendar match the document's reminders. Never asks the user anything. */
+  sync(doc: Doc): Promise<void>;
 }
 
 export interface Registry<T> {
   register(item: T): Disposable;
+  /** Items registered now, in registration order. */
+  list(): T[];
 }
 
 export interface ExtensionContext {

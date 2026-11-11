@@ -96,6 +96,25 @@ interface IdentityServices {
 }
 
 let token: { value: string; expires: number; scopes: Set<string> } | null = null;
+
+// Scopes the user has granted before, remembered across launches (not a secret).
+// Every sign-in asks for all of them, so opening a file from Drive also renews
+// calendar access, and the user does not have to connect each service again.
+const GRANTED_KEY = 'google:granted-scopes';
+
+function rememberedScopes(): string[] {
+  try {
+    return JSON.parse(localStorage.getItem(GRANTED_KEY) ?? '[]') as string[];
+  } catch {
+    return [];
+  }
+}
+
+/** True when the user granted these scopes in an earlier session. */
+export function grantedBefore(scopes: string[]): boolean {
+  const remembered = new Set(rememberedScopes());
+  return scopes.every((scope) => remembered.has(scope));
+}
 let pending: Promise<string> | null = null;
 
 const covers = (scopes: string[]) =>
@@ -115,6 +134,11 @@ export async function accessToken(scopes: string[], interactive: boolean): Promi
   return pending;
 }
 
+/** True when a token for `scopes` is at hand, so calls can be made without asking the user. */
+export function hasToken(scopes: string[]): boolean {
+  return covers(scopes);
+}
+
 /** Drops the token after Google rejected it; the next user action signs in again. */
 export function forgetToken(): void {
   token = null;
@@ -126,7 +150,7 @@ async function requestToken(scopes: string[]): Promise<string> {
   await loadScript(IDENTITY_SCRIPT);
   const google = (window as unknown as { google: IdentityServices }).google;
   // Ask again for the scopes already granted so one token keeps serving every extension.
-  const wanted = new Set([...(token?.scopes ?? []), ...scopes]);
+  const wanted = new Set([...rememberedScopes(), ...(token?.scopes ?? []), ...scopes]);
   return new Promise<string>((resolve, reject) => {
     const client = google.accounts.oauth2.initTokenClient({
       client_id: config.clientId,
@@ -138,6 +162,7 @@ async function requestToken(scopes: string[]): Promise<string> {
         }
         const granted = new Set((response.scope ?? '').split(' ').filter(Boolean));
         token = { value: response.access_token, expires: Date.now() + (response.expires_in ?? 3600) * 1000, scopes: granted };
+        localStorage.setItem(GRANTED_KEY, JSON.stringify([...new Set([...rememberedScopes(), ...granted])]));
         if (!scopes.every((scope) => granted.has(scope))) {
           reject(new Error('доступ не выдан — при входе отметьте все запрошенные разрешения'));
           return;

@@ -35,7 +35,7 @@ Doc
 | `attrs` | Значения атрибутов: `{ attrDefId → значение }`. |
 | `link` | Ссылка: `url`, `file` (относительный путь), `node` (id узла, в т.ч. в другом файле: `docId` + `path`). |
 | `prompt` | `{ text, status: draft \| queued \| running \| done \| error, scope: node \| subtree \| sheet, message? }`. |
-| `reminders` | `[{ id, at (ISO 8601), text?, calendarEventId? }]`. |
+| `reminders` | `[{ id, at (ISO 8601), text?, calendarEventId? }]`. `calendarEventId` зарезервировано и не заполняется: событие календаря находится по `id` напоминания (см. GOOGLE.md). |
 | `collapsed` | Свёрнута ли ветка. |
 | `structure` | Раскладка поддерева, если отличается от унаследованной. |
 | `position` | Координаты для корней и вручную сдвинутых узлов. |
