@@ -5,6 +5,7 @@ import { downloadFs, localFs, hasFileSystemAccess } from '../../storage/localFs.
 import type { Extension } from '../api.ts';
 import { exportFreeMindExtension } from './exportFreeMind.ts';
 import { exportMarkdownExtension } from './exportMarkdown.ts';
+import { exportSvgExtension } from './exportSvg.ts';
 import { notesExtension } from './notes.tsx';
 
 const localFilesExtension: Extension = {
@@ -19,5 +20,6 @@ export const builtinExtensions: Extension[] = [
   localFilesExtension,
   exportMarkdownExtension,
   exportFreeMindExtension,
+  exportSvgExtension,
   notesExtension,
 ];

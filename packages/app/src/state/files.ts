@@ -14,6 +14,7 @@ const messageOf = (error: unknown) => (error instanceof Error ? error.message : 
 
 /** Parses file content. Returns the document or the reasons it cannot be used. */
 function parseDoc(text: string): { doc: Doc } | { problems: string[] } {
+  if (!text.trim()) return { problems: ['файл пустой — вероятно, сохранение в него не удалось'] };
   let doc: Doc;
   try {
     doc = JSON.parse(text) as Doc;
@@ -77,9 +78,9 @@ export async function saveFile(host: ExtensionHost, session: Session, auto = fal
     const provider = host.storageFor(session.file);
     if (auto && !provider.canAutosave) return;
     // A manual save runs inside a user gesture, the only moment access can be requested.
-    if (!auto && provider.authorize && !(await provider.authorize(session.file))) {
-      throw new Error('нет разрешения на запись в этот файл');
-    }
+    // The answer is advisory: some browsers report "not granted" for a file that is
+    // writable, so the write below is attempted either way and reports the real error.
+    if (!auto) await provider.authorize?.(session.file).catch(() => false);
     if (session.fileVersion && (await provider.version(session.file)) !== session.fileVersion) {
       session.conflict = true;
       const overwrite =
@@ -98,7 +99,10 @@ export async function saveFile(host: ExtensionHost, session: Session, auto = fal
     session.conflict = false;
     session.saveError = null;
   } catch (error) {
-    session.saveError = messageOf(error);
+    const blocked = error instanceof DOMException && (error.name === 'NotAllowedError' || error.name === 'SecurityError');
+    session.saveError = blocked
+      ? 'браузер запретил запись в файл. Во встроенном браузере Claude запись не работает — откройте редактор в Chrome или Edge'
+      : messageOf(error);
     if (!auto) void alertDialog(`Не удалось сохранить «${session.name}»: ${session.saveError}`);
   } finally {
     session.saving = false;

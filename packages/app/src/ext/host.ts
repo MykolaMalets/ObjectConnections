@@ -5,6 +5,9 @@ import { Session, execute } from '../state/store.ts';
 import type { Workspace } from '../state/store.ts';
 import type { FileRef, StorageProvider } from '../storage/provider.ts';
 import { alertDialog } from '../ui/dialogs.tsx';
+import type { Measure } from '../view/layout.ts';
+import { layoutRoots } from '../view/layout.ts';
+import { createMeasure } from '../view/style.ts';
 import type {
   Command,
   Disposable,
@@ -29,6 +32,7 @@ export class ExtensionHost {
   readonly reminderSinks = new Map<string, ReminderSink>();
   /** Id of the panel shown in the side area, or null. */
   activePanel: string | null = null;
+  measure: Measure | null = null;
 
   constructor(ws: Workspace, extensions: Extension[]) {
     this.ws = ws;
@@ -138,6 +142,10 @@ export class ExtensionHost {
         sheet: session.sheet,
         rootIds: session.viewRoots,
         name: session.name,
+        layout: () => {
+          this.measure ??= createMeasure(document.createElement('canvas').getContext('2d')!);
+          return layoutRoots(session.doc, session.viewRoots, session.sheet?.structure, this.measure, !!session.focusId);
+        },
       });
       const blob = typeof result === 'string' ? new Blob([result], { type: exporter.mime }) : result;
       downloadBlob(blob, `${session.name}.${exporter.extension}`);

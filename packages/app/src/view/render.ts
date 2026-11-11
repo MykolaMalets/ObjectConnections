@@ -57,22 +57,35 @@ export function render(
   }
   ctx.stroke();
 
+  // Level of detail: when zoomed far out, thousands of boxes are visible but
+  // text and toggles are below a readable size, and drawing them dominates the frame.
+  const showToggles = view.scale >= MIN_TOGGLE_SCALE;
+  const underlines = new Path2D();
+
   ctx.textBaseline = 'middle';
   for (const box of layout.boxes) {
     if (!visible(box)) continue;
     const style = levelStyle(box.depth);
+    const readable = style.fontSize * view.scale >= MIN_TEXT_PX;
     if (style.fill) {
       ctx.fillStyle = style.fill;
-      ctx.beginPath();
-      ctx.roundRect(box.x, box.y, box.w, box.h, style.radius);
-      ctx.fill();
+      if (readable) {
+        ctx.beginPath();
+        ctx.roundRect(box.x, box.y, box.w, box.h, style.radius);
+        ctx.fill();
+      } else {
+        ctx.fillRect(box.x, box.y, box.w, box.h);
+      }
     } else {
-      ctx.strokeStyle = COLORS.edge;
-      ctx.lineWidth = 1.5;
-      ctx.beginPath();
-      ctx.moveTo(box.x, box.y + box.h);
-      ctx.lineTo(box.x + box.w, box.y + box.h);
-      ctx.stroke();
+      underlines.moveTo(box.x, box.y + box.h);
+      underlines.lineTo(box.x + box.w, box.y + box.h);
+    }
+    if (!readable) {
+      if (box.id === state.selection || box.id === state.dropTarget) {
+        ctx.fillStyle = box.id === state.dropTarget ? COLORS.dropTarget : COLORS.selection;
+        ctx.fillRect(box.x - 3, box.y - 3, box.w + 6, box.h + 6);
+      }
+      continue;
     }
     if (box.id !== state.editing) {
       ctx.fillStyle = style.color;
@@ -90,7 +103,7 @@ export function render(
       ctx.roundRect(box.x - 3, box.y - 3, box.w + 6, box.h + 6, style.radius + 3);
       ctx.stroke();
     }
-    const toggle = togglePoint(box);
+    const toggle = showToggles ? togglePoint(box) : undefined;
     if (toggle) {
       ctx.fillStyle = COLORS.toggleFill;
       ctx.strokeStyle = COLORS.toggleStroke;
@@ -109,4 +122,12 @@ export function render(
       }
     }
   }
+  ctx.strokeStyle = COLORS.edge;
+  ctx.lineWidth = 1.5;
+  ctx.stroke(underlines);
 }
+
+/** Text smaller than this many screen pixels is not drawn. */
+const MIN_TEXT_PX = 3.5;
+/** Collapse toggles are hidden below this zoom. */
+const MIN_TOGGLE_SCALE = 0.35;

@@ -1,10 +1,11 @@
-import { getNode } from '@oc/core';
+import type { Doc } from '@oc/core';
+import { getNode, validate } from '@oc/core';
 import { useEffect, useMemo, useSyncExternalStore } from 'react';
 import { builtinExtensions } from './ext/builtin/index.ts';
 import { ExtensionHost } from './ext/host.ts';
 import { openFile, saveFile, syncFromStorage } from './state/files.ts';
-import type { Session } from './state/store.ts';
 import {
+  Session,
   Workspace,
   addChild,
   addSheet,
@@ -24,10 +25,46 @@ import { MapCanvas } from './view/MapCanvas.tsx';
 const AUTOSAVE_DELAY_MS = 1500;
 const STORAGE_CHECK_MS = 2000;
 
+// Drafts: unsaved documents are mirrored to localStorage so a page reload
+// (or a crash) does not lose them. A draft is dropped once its tab is saved or closed.
+const DRAFT_PREFIX = 'oc-draft:';
+
+function restoreDrafts(ws: Workspace): void {
+  for (const key of Object.keys(localStorage).filter((k) => k.startsWith(DRAFT_PREFIX)).sort()) {
+    try {
+      const draft = JSON.parse(localStorage.getItem(key)!) as { name: string; doc: Doc };
+      if (validate(draft.doc).length) throw new Error('invalid draft');
+      const session = new Session(draft.doc, draft.name);
+      session.savedRevision = -1;
+      ws.add(session);
+    } catch {
+      localStorage.removeItem(key);
+    }
+  }
+}
+
+function writeDrafts(ws: Workspace): void {
+  const keep = new Set<string>();
+  for (const s of ws.sessions) {
+    if (!s.dirty) continue;
+    const key = DRAFT_PREFIX + s.doc.id;
+    keep.add(key);
+    try {
+      localStorage.setItem(key, JSON.stringify({ name: s.name, doc: s.doc }));
+    } catch (error) {
+      console.warn('draft not stored', error);
+    }
+  }
+  for (const key of Object.keys(localStorage)) {
+    if (key.startsWith(DRAFT_PREFIX) && !keep.has(key)) localStorage.removeItem(key);
+  }
+}
+
 function createHost(): ExtensionHost {
   const ws = new Workspace();
   const host = new ExtensionHost(ws, builtinExtensions);
-  newSession(ws);
+  restoreDrafts(ws);
+  if (ws.sessions.length === 0) newSession(ws);
   if (import.meta.env.DEV) Object.assign(window, { __ws: ws, __host: host });
   return host;
 }
@@ -94,6 +131,7 @@ export function App() {
   // Autosave: a quiet period after the last change, only for files saved in place.
   useEffect(() => {
     const timer = setTimeout(() => {
+      writeDrafts(ws);
       for (const s of ws.sessions) if (s.dirty && s.file) void saveFile(host, s, true);
     }, AUTOSAVE_DELAY_MS);
     return () => clearTimeout(timer);

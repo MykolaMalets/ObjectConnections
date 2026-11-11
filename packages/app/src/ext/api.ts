@@ -4,6 +4,7 @@
 import type { Doc, Id, MapNode, Op, Reminder, Sheet } from '@oc/core';
 import type { ReactNode } from 'react';
 import type { StorageProvider } from '../storage/provider.ts';
+import type { LayoutResult } from '../view/layout.ts';
 
 /** Undoes a registration. */
 export type Disposable = () => void;
@@ -50,6 +51,12 @@ export interface ExportInput {
   rootIds: Id[];
   /** File name without extension. */
   name: string;
+  /**
+   * Positions of the exported maps exactly as the editor draws them. Provided
+   * by the editor; absent where there is no text measurement (CLI, tests of
+   * text formats). Picture formats (SVG, PDF) are built from it.
+   */
+  layout?: () => LayoutResult;
 }
 
 export interface Exporter {
