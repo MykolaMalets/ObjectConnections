@@ -78,7 +78,7 @@ To link a code map with a documentation map in the same file, create relations b
 
 ## Recipe: process prompts stored in the map
 
-The user writes a request on a topic and marks it queued. To process the queue:
+The user writes a request on a topic in the editor's «Агент» panel and presses «В очередь» (or you set it with `oc set --prompt ... --prompt-status queued`). To process the queue:
 
 1. `oc prompts <file>` — lists queued prompts with the topic path and id.
 2. For each prompt: `oc set <file> <id> --prompt-status running`.

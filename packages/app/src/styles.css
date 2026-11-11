@@ -307,3 +307,57 @@ button.primary:hover:not(:disabled) {
 .context-menu .shortcut {
   color: #8191ad;
 }
+
+.field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.field select {
+  flex: 1;
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.attr {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 0;
+  border-bottom: 1px solid #eef1f6;
+}
+
+.attr-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-weight: 600;
+}
+
+.attr input[type='text'],
+.attr input[type='url'],
+.attr input[type='date'],
+.attr select {
+  width: 100%;
+  font: inherit;
+  padding: 4px 6px;
+  border: 1px solid #cfd6e2;
+  border-radius: 6px;
+}
+
+.choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+}
+
+button.icon {
+  border: none;
+  padding: 0 6px;
+  color: #8191ad;
+}

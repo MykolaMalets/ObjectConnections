@@ -6,7 +6,9 @@ import type { Extension } from '../api.ts';
 import { exportFreeMindExtension } from './exportFreeMind.ts';
 import { exportMarkdownExtension } from './exportMarkdown.ts';
 import { exportSvgExtension } from './exportSvg.ts';
+import { attributesExtension } from './attributes.tsx';
 import { notesExtension } from './notes.tsx';
+import { promptExtension } from './prompt.tsx';
 
 const localFilesExtension: Extension = {
   id: 'builtin.local-files',
@@ -22,4 +24,6 @@ export const builtinExtensions: Extension[] = [
   exportFreeMindExtension,
   exportSvgExtension,
   notesExtension,
+  attributesExtension,
+  promptExtension,
 ];

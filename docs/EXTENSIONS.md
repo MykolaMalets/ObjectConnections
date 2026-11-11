@@ -62,6 +62,8 @@ export const myExtension: Extension = {
 | `ext/builtin/exportMarkdown.ts` | Простой экспортёр |
 | `ext/builtin/exportFreeMind.ts` | Экспорт с упрощением структуры и перечнем потерь |
 | `ext/builtin/exportSvg.ts` | Экспорт-картинка из раскладки `input.layout()` |
+| `ext/builtin/attributes.tsx` | Панель с формой, создающая определения в документе (`putAttrDef`) |
+| `ext/builtin/prompt.tsx` | Панель, которая читает живое значение поля при нажатии кнопки, а не ждёт его потери фокуса |
 | `ext/builtin/notes.tsx` | Панель, читающая выделение и меняющая документ через `apply` |
 
 ## Как писать запланированные расширения
