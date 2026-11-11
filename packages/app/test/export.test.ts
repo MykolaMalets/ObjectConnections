@@ -98,4 +98,10 @@ test('svg: one shape or underline and one text per visible node, inside the view
     assert.ok(box.x >= vx! && box.y >= vy! && box.x + box.w <= vx! + vw! && box.y + box.h <= vy! + vh!);
   }
   assert.throws(() => exportSvg({ doc, sheet, rootIds: [root], name: 'x' }), /needs the layout/);
+  // The relation from Step 1 is hidden with its collapsed branch; one between visible topics is drawn.
+  assert.equal(svg.includes('stroke-dasharray'), false);
+  applyOps(doc, [{ t: 'putRelation', relation: { id: newId(), from: root, to: doc.nodes[root]!.children[1]!, text: 'see <also>' } }]);
+  const withRelation = exportSvg({ doc, sheet, rootIds: [root], name: 'x', layout });
+  assert.equal((withRelation.match(/stroke-dasharray/g) ?? []).length, 1);
+  assert.ok(withRelation.includes('>see &lt;also&gt;</text>'));
 });

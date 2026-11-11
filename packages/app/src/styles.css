@@ -276,6 +276,8 @@ button.primary:hover:not(:disabled) {
   position: fixed;
   z-index: 20;
   min-width: 200px;
+  max-height: calc(100vh - 8px);
+  overflow-y: auto;
   padding: 4px;
   background: #fff;
   border: 1px solid #cfd6e2;
@@ -360,4 +362,8 @@ button.icon {
   border: none;
   padding: 0 6px;
   color: #8191ad;
+}
+
+.map-canvas.linking {
+  cursor: crosshair;
 }

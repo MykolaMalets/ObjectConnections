@@ -28,6 +28,7 @@ export const COLORS = {
   dropTarget: '#1aa260',
   toggleFill: '#ffffff',
   toggleStroke: '#8191ad',
+  relation: '#c2410c',
 };
 
 export const MAX_TEXT_WIDTH = 320;

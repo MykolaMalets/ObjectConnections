@@ -237,6 +237,7 @@ export function App() {
         {session && <Menu label="Экспорт…" items={[...host.exporters.values()]} onPick={(id) => void host.runExport(id)} />}
         <Menu label="Импорт…" items={[...host.importers.values()]} onPick={(id) => void host.runImport(id)} />
         <span className="spacer" />
+        {session?.linking && <span className="hint">Щёлкните тему, с которой связать (Esc — отмена)</span>}
         {session?.conflict && <span className="warning">Файл изменён вне редактора — автосохранение остановлено</span>}
         {session?.saveError && !session.conflict && (
           <span className="warning" title={session.saveError}>

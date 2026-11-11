@@ -121,3 +121,21 @@ test('layout of 5000 nodes is fast', () => {
   assert.equal(layout.boxes.length, 5001);
   assert.ok(elapsed < 50, `layout took ${elapsed.toFixed(1)} ms`);
 });
+
+test('relation curves start and end on the boxes borders and bend away from the straight line', async () => {
+  const { relationCurve } = await import('../src/view/layout.ts');
+  const box = (x: number, y: number) => ({ id: 'b', parentId: null, x, y, w: 100, h: 40, depth: 1, dir: 1 as const, lines: [], childCount: 0, collapsed: false });
+  const a = box(0, 0);
+  const b = box(300, 200);
+  const c = relationCurve(a, b);
+  const onBorder = (bx: typeof a, x: number, y: number) =>
+    (Math.abs(x - bx.x) < 1e-9 || Math.abs(x - bx.x - bx.w) < 1e-9) && y >= bx.y - 1e-9 && y <= bx.y + bx.h + 1e-9
+    || (Math.abs(y - bx.y) < 1e-9 || Math.abs(y - bx.y - bx.h) < 1e-9) && x >= bx.x - 1e-9 && x <= bx.x + bx.w + 1e-9;
+  assert.ok(onBorder(a, c.x1, c.y1), 'starts on the source border');
+  assert.ok(onBorder(b, c.x2, c.y2), 'ends on the target border');
+  // The midpoint lies off the straight segment.
+  const cross = (c.x2 - c.x1) * (c.my - c.y1) - (c.y2 - c.y1) * (c.mx - c.x1);
+  assert.ok(Math.abs(cross) / Math.hypot(c.x2 - c.x1, c.y2 - c.y1) > 10);
+  const loop = relationCurve(a, a);
+  assert.ok(loop.my < a.y);
+});

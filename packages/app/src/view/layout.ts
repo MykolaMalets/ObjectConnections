@@ -218,3 +218,85 @@ export function neighbour(doc: Doc, layout: LayoutResult, from: Id, direction: D
   }
   return best?.id;
 }
+
+export interface RelationCurve {
+  /** Cubic Bézier: start, two control points, end. */
+  x1: number;
+  y1: number;
+  c1x: number;
+  c1y: number;
+  c2x: number;
+  c2y: number;
+  x2: number;
+  y2: number;
+  /** Point on the curve halfway along it, for the label. */
+  mx: number;
+  my: number;
+}
+
+/** Point where the ray from the box centre towards (tx, ty) leaves the box. */
+function borderPoint(b: NodeBox, tx: number, ty: number): { x: number; y: number } {
+  const cx = b.x + b.w / 2;
+  const cy = b.y + b.h / 2;
+  const dx = tx - cx;
+  const dy = ty - cy;
+  if (dx === 0 && dy === 0) return { x: cx, y: b.y };
+  const sx = dx === 0 ? Infinity : b.w / 2 / Math.abs(dx);
+  const sy = dy === 0 ? Infinity : b.h / 2 / Math.abs(dy);
+  const s = Math.min(sx, sy);
+  return { x: cx + dx * s, y: cy + dy * s };
+}
+
+/**
+ * Curve of a relation between two boxes: from border to border, bent to one
+ * side so it does not run along the tree's own connectors. A relation of a
+ * box to itself is drawn as a loop above it.
+ */
+export function relationCurve(from: NodeBox, to: NodeBox): RelationCurve {
+  if (from === to) {
+    const x1 = from.x + from.w * 0.3;
+    const x2 = from.x + from.w * 0.7;
+    const y = from.y;
+    const lift = Math.max(40, from.h);
+    return { x1, y1: y, c1x: x1 - 20, c1y: y - lift, c2x: x2 + 20, c2y: y - lift, x2, y2: y, mx: (x1 + x2) / 2, my: y - lift * 0.75 };
+  }
+  const fc = { x: from.x + from.w / 2, y: from.y + from.h / 2 };
+  const tc = { x: to.x + to.w / 2, y: to.y + to.h / 2 };
+  const p0 = borderPoint(from, tc.x, tc.y);
+  const p3 = borderPoint(to, fc.x, fc.y);
+  const dx = p3.x - p0.x;
+  const dy = p3.y - p0.y;
+  const length = Math.hypot(dx, dy) || 1;
+  // Unit normal; the bend is proportional to the distance, within limits.
+  const bend = Math.min(90, Math.max(24, length * 0.25));
+  const nx = (-dy / length) * bend;
+  const ny = (dx / length) * bend;
+  const c1x = p0.x + dx / 3 + nx;
+  const c1y = p0.y + dy / 3 + ny;
+  const c2x = p0.x + (dx * 2) / 3 + nx;
+  const c2y = p0.y + (dy * 2) / 3 + ny;
+  return {
+    x1: p0.x,
+    y1: p0.y,
+    c1x,
+    c1y,
+    c2x,
+    c2y,
+    x2: p3.x,
+    y2: p3.y,
+    mx: 0.125 * p0.x + 0.375 * c1x + 0.375 * c2x + 0.125 * p3.x,
+    my: 0.125 * p0.y + 0.375 * c1y + 0.375 * c2y + 0.125 * p3.y,
+  };
+}
+
+/** The two other corners of an arrowhead pointing at (x2, y2) from the direction of (fromX, fromY). */
+export function arrowHead(fromX: number, fromY: number, x2: number, y2: number, size = 9): [number, number, number, number] {
+  const angle = Math.atan2(y2 - fromY, x2 - fromX);
+  const spread = 0.45;
+  return [
+    x2 - size * Math.cos(angle - spread),
+    y2 - size * Math.sin(angle - spread),
+    x2 - size * Math.cos(angle + spread),
+    y2 - size * Math.sin(angle + spread),
+  ];
+}

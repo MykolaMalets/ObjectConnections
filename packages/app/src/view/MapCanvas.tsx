@@ -25,6 +25,11 @@ import {
   extractSelectedToSheet,
   openLink,
   setUrlLink,
+  cancelLinking,
+  finishLinking,
+  removeRelation,
+  setRelationText,
+  startLinking,
 } from '../state/store.ts';
 import { promptDialog } from '../ui/dialogs.tsx';
 import { showMenu } from '../ui/menu.tsx';
@@ -125,6 +130,7 @@ export function MapCanvas({ ws, session }: { ws: Workspace; session: Session }) 
         selection: session.selection,
         dropTarget: dropTarget.current,
         editing: session.editing?.id ?? null,
+        relations: Object.values(session.doc.relations),
       });
     });
     return () => cancelAnimationFrame(frame);
@@ -177,6 +183,11 @@ export function MapCanvas({ ws, session }: { ws: Workspace; session: Session }) 
       return;
     }
     const box = e.button === 0 ? hitTest(layout, p.x, p.y) : undefined;
+    if (session.linking && e.button === 0) {
+      if (box) finishLinking(ws, box.id);
+      else cancelLinking(ws);
+      return;
+    }
     if (box && (e.ctrlKey || e.metaKey) && openLink(ws, box.id)) return;
     if (box) {
       drag.current = { kind: 'node', id: box.id, sx: p.sx, sy: p.sy, moved: false };
@@ -244,6 +255,11 @@ export function MapCanvas({ ws, session }: { ws: Workspace; session: Session }) 
 
   const onKeyDown = (e: React.KeyboardEvent) => {
     if (session.editing || e.target !== containerRef.current) return;
+    if (session.linking && e.key === 'Escape') {
+      e.preventDefault();
+      cancelLinking(ws);
+      return;
+    }
     const ctrl = e.ctrlKey || e.metaKey;
     const key = e.key;
     const selection = session.selection;
@@ -331,6 +347,23 @@ export function MapCanvas({ ws, session }: { ws: Workspace; session: Session }) 
       },
       { label: 'Показать как отдельную карту\tF6', run: () => drillDown(ws) },
       { label: 'Вынести на новый лист', disabled: node.parentId === null, run: () => extractSelectedToSheet(ws) },
+      { label: 'Связать с темой…', separator: true, run: () => startLinking(ws) },
+      ...Object.values(session.doc.relations)
+        .filter((r) => r.from === node.id || r.to === node.id)
+        .flatMap((r) => {
+          const other = session.doc.nodes[r.from === node.id ? r.to : r.from]?.text ?? '…';
+          const name = `${r.from === node.id ? '→' : '←'} «${other}»${r.text ? ` (${r.text})` : ''}`;
+          return [
+            {
+              label: `Подпись связи ${name}…`,
+              run: async () => {
+                const text = await promptDialog('Подпись связи (пусто — без подписи)', r.text ?? '');
+                if (text !== null) setRelationText(ws, r.id, text);
+              },
+            },
+            { label: `Удалить связь ${name}`, run: () => removeRelation(ws, r.id) },
+          ];
+        }),
       { label: 'Удалить\tDel', separator: true, disabled: isViewRoot, run: () => removeSelected(ws) },
     ]);
   };
@@ -349,7 +382,7 @@ export function MapCanvas({ ws, session }: { ws: Workspace; session: Session }) 
   return (
     <div
       ref={containerRef}
-      className="map-canvas"
+      className={session.linking ? 'map-canvas linking' : 'map-canvas'}
       tabIndex={0}
       onKeyDown={onKeyDown}
       onContextMenu={onContextMenu}

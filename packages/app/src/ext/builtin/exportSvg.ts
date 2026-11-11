@@ -1,4 +1,5 @@
 import type { ExportInput, Extension } from '../api.ts';
+import { arrowHead, relationCurve } from '../../view/layout.ts';
 import { COLORS, levelStyle } from '../../view/style.ts';
 
 const PADDING = 24;
@@ -24,6 +25,30 @@ export function exportSvg(input: ExportInput): string {
     top = Math.min(top, b.y);
     right = Math.max(right, b.x + b.w);
     bottom = Math.max(bottom, b.y + b.h);
+  }
+  const relations: string[] = [];
+  for (const relation of Object.values(input.doc.relations)) {
+    const from = byId.get(relation.from);
+    const to = byId.get(relation.to);
+    if (!from || !to) continue;
+    const c = relationCurve(from, to);
+    const [ax, ay, bx, by] = arrowHead(c.c2x, c.c2y, c.x2, c.y2);
+    relations.push(
+      `<path d="M${n(c.x1)} ${n(c.y1)}C${n(c.c1x)} ${n(c.c1y)} ${n(c.c2x)} ${n(c.c2y)} ${n(c.x2)} ${n(c.y2)}" fill="none" stroke="${COLORS.relation}" stroke-width="1.5" stroke-dasharray="6 4"/>`,
+      `<path d="M${n(c.x2)} ${n(c.y2)}L${n(ax)} ${n(ay)}L${n(bx)} ${n(by)}Z" fill="${COLORS.relation}"/>`,
+    );
+    if (relation.text) {
+      relations.push(
+        `<text x="${n(c.mx)}" y="${n(c.my)}" font-size="12" text-anchor="middle" fill="${COLORS.relation}" stroke="${COLORS.background}" stroke-width="4" paint-order="stroke">${escapeXml(relation.text)}</text>`,
+      );
+    }
+    // Loops and bends can leave the boxes' bounding area.
+    for (const [x, y] of [[c.c1x, c.c1y], [c.c2x, c.c2y], [c.mx, c.my]] as const) {
+      left = Math.min(left, x);
+      right = Math.max(right, x);
+      top = Math.min(top, y);
+      bottom = Math.max(bottom, y);
+    }
   }
   const width = right - left + PADDING * 2;
   const height = bottom - top + PADDING * 2;
@@ -64,6 +89,7 @@ export function exportSvg(input: ExportInput): string {
     `<path d="${edges.join('')}" fill="none" stroke="${COLORS.edge}" stroke-width="1.5"/>`,
     ...shapes,
     ...texts,
+    ...relations,
     '</svg>',
     '',
   ].join('\n');

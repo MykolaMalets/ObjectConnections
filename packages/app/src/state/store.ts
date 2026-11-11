@@ -54,6 +54,8 @@ export class Session {
   fileVersion = '';
   savedRevision = 0;
   saving = false;
+  /** Source topic while the user picks the other end of a new relation. */
+  linking: Id | null = null;
   /** Why the last save failed. While set, autosave waits for a successful manual save. */
   saveError: string | null = null;
   /** The file changed outside the editor since it was read; autosave is paused. */
@@ -618,4 +620,53 @@ export function openLink(ws: Workspace, id: Id): boolean {
     return true;
   }
   return false;
+}
+
+// ---------------------------------------------------------------------------
+// Relations: directed links between any two topics, drawn as dashed arrows.
+
+/** Starts picking the target of a relation from the selected topic. */
+export function startLinking(ws: Workspace): void {
+  const s = ws.session;
+  if (!s?.selection) return;
+  s.linking = s.selection;
+  ws.notify();
+}
+
+export function cancelLinking(ws: Workspace): void {
+  const s = ws.session;
+  if (!s?.linking) return;
+  s.linking = null;
+  ws.notify();
+}
+
+/** Completes a relation started with startLinking. A second relation between the same topics is not created. */
+export function finishLinking(ws: Workspace, targetId: Id): void {
+  const s = ws.session;
+  const from = s?.linking;
+  if (!s || !from) return;
+  s.linking = null;
+  const exists = Object.values(s.doc.relations).some((r) => r.from === from && r.to === targetId);
+  if (!exists && getNode(s.doc, from) && getNode(s.doc, targetId)) {
+    run(s, [{ t: 'putRelation', relation: { id: newId(), from, to: targetId } }], 'Связать темы');
+  }
+  s.selection = targetId;
+  ws.notify();
+}
+
+export function setRelationText(ws: Workspace, id: Id, text: string): void {
+  const s = ws.session;
+  const relation = s?.doc.relations[id];
+  if (!s || !relation) return;
+  const { text: _old, ...rest } = relation;
+  const next: typeof relation = text.trim() ? { ...rest, text: text.trim() } : rest;
+  run(s, [{ t: 'putRelation', relation: next }], 'Подпись связи');
+  ws.notify();
+}
+
+export function removeRelation(ws: Workspace, id: Id): void {
+  const s = ws.session;
+  if (!s) return;
+  run(s, [{ t: 'removeRelation', id }], 'Удалить связь');
+  ws.notify();
 }

@@ -2,7 +2,7 @@
 
 import type { Id } from '@oc/core';
 import type { LayoutResult, NodeBox } from './layout.ts';
-import { TOGGLE_RADIUS, togglePoint } from './layout.ts';
+import { TOGGLE_RADIUS, arrowHead, relationCurve, togglePoint } from './layout.ts';
 import { COLORS, levelStyle } from './style.ts';
 
 /** screen = world * scale + (x, y) */
@@ -17,7 +17,49 @@ export interface RenderState {
   dropTarget: Id | null;
   /** Box being edited: its text is hidden under the editor overlay. */
   editing: Id | null;
+  /** Relations whose both ends are laid out. */
+  relations: { id: Id; from: Id; to: Id; text?: string }[];
 }
+
+/** Draws relations: dashed curves with an arrowhead and an optional label. */
+function renderRelations(ctx: CanvasRenderingContext2D, layout: LayoutResult, view: View, state: RenderState): void {
+  if (state.relations.length === 0) return;
+  ctx.save();
+  ctx.strokeStyle = COLORS.relation;
+  ctx.fillStyle = COLORS.relation;
+  ctx.lineWidth = 1.5;
+  const readable = RELATION_FONT_SIZE * view.scale >= MIN_TEXT_PX;
+  for (const relation of state.relations) {
+    const from = layout.byId.get(relation.from);
+    const to = layout.byId.get(relation.to);
+    if (!from || !to) continue;
+    const c = relationCurve(from, to);
+    ctx.setLineDash([6, 4]);
+    ctx.beginPath();
+    ctx.moveTo(c.x1, c.y1);
+    ctx.bezierCurveTo(c.c1x, c.c1y, c.c2x, c.c2y, c.x2, c.y2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    const [ax, ay, bx, by] = arrowHead(c.c2x, c.c2y, c.x2, c.y2);
+    ctx.beginPath();
+    ctx.moveTo(c.x2, c.y2);
+    ctx.lineTo(ax, ay);
+    ctx.lineTo(bx, by);
+    ctx.closePath();
+    ctx.fill();
+    if (relation.text && readable) {
+      ctx.font = `${RELATION_FONT_SIZE}px system-ui, "Segoe UI", sans-serif`;
+      const w = ctx.measureText(relation.text).width + 10;
+      ctx.fillStyle = COLORS.background;
+      ctx.fillRect(c.mx - w / 2, c.my - 9, w, 18);
+      ctx.fillStyle = COLORS.relation;
+      ctx.fillText(relation.text, c.mx - w / 2 + 5, c.my);
+    }
+  }
+  ctx.restore();
+}
+
+const RELATION_FONT_SIZE = 12;
 
 export function render(
   ctx: CanvasRenderingContext2D,
@@ -125,6 +167,7 @@ export function render(
   ctx.strokeStyle = COLORS.edge;
   ctx.lineWidth = 1.5;
   ctx.stroke(underlines);
+  renderRelations(ctx, layout, view, state);
 }
 
 /** Text smaller than this many screen pixels is not drawn. */
