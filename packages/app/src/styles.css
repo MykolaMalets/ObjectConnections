@@ -20,6 +20,19 @@ body {
   display: flex;
   flex-direction: column;
   height: 100%;
+  /* The interface is not text to select: on phones a long press would select words
+     (for example in the menu that the long press itself opens). Text fields stay selectable. */
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.app input,
+.app textarea,
+.dialog p {
+  user-select: text;
+  -webkit-user-select: text;
+  -webkit-touch-callout: default;
 }
 
 button {
