@@ -25,6 +25,7 @@ export type Op =
   | { t: 'removeAttrDef'; id: Id }
   | { t: 'insertSheet'; sheet: Sheet; index?: number }
   | { t: 'removeSheet'; id: Id }
+  | { t: 'moveSheet'; id: Id; index: number }
   | { t: 'patchSheet'; id: Id; patch: Patch }
   | { t: 'putRelation'; relation: Relation }
   | { t: 'removeRelation'; id: Id }
@@ -240,6 +241,17 @@ export function applyOp(doc: Doc, op: Op): Op[] {
       const index = doc.sheets.indexOf(sheet);
       doc.sheets.splice(index, 1);
       return [{ t: 'insertSheet', sheet, index }];
+    }
+
+    case 'moveSheet': {
+      const sheet = requireSheet(doc, op.id);
+      const oldIndex = doc.sheets.indexOf(sheet);
+      if (!Number.isInteger(op.index) || op.index < 0 || op.index >= doc.sheets.length) {
+        fail(`index out of range: ${op.index}`);
+      }
+      doc.sheets.splice(oldIndex, 1);
+      doc.sheets.splice(op.index, 0, sheet);
+      return [{ t: 'moveSheet', id: op.id, index: oldIndex }];
     }
 
     case 'patchSheet': {

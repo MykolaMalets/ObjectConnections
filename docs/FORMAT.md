@@ -75,6 +75,7 @@ Doc
 | `setAttr { id, defId, value }` | Задать значение атрибута; `null` удаляет. |
 | `putAttrDef { def }` / `removeAttrDef { id }` | Создать/изменить и удалить определение атрибута (значения у узлов тоже удаляются). |
 | `insertSheet { sheet, index? }` / `removeSheet { id }` | Добавить пустой лист; удалить пустой лист. |
+| `moveSheet { id, index }` | Переставить лист; `index` — позиция в списке после того, как лист убран со старого места. |
 | `patchSheet { id, patch }` | Изменить `title`, `structure`, `ext`. |
 | `putRelation { relation }` / `removeRelation { id }` | Создать/изменить и удалить связь. |
 | `patchDoc { patch }` | Изменить `title`, `ext`. |

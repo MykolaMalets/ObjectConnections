@@ -18,7 +18,12 @@ import {
   startEdit,
   toggleCollapse,
   undo,
+  FRAGMENT_MIME,
+  copySelection,
+  cutSelection,
+  pasteClipboard,
 } from '../state/store.ts';
+import type { ClipboardData } from '../state/store.ts';
 import type { Direction, LayoutResult, NodeBox } from './layout.ts';
 import { hitTest, hitToggle, layoutRoots, neighbour } from './layout.ts';
 import { render } from './render.ts';
@@ -261,8 +266,16 @@ export function MapCanvas({ ws, session }: { ws: Workspace; session: Session }) 
     if (handled) e.preventDefault();
   };
 
+  // Clipboard events (not key handlers) give access to the system clipboard without a permission prompt.
+  const onClipboardOut = (e: React.ClipboardEvent, data: ClipboardData | null) => {
+    if (session.editing || e.target !== containerRef.current || !data) return;
+    e.preventDefault();
+    e.clipboardData.setData('text/plain', data.text);
+    e.clipboardData.setData(FRAGMENT_MIME, JSON.stringify(data.fragment));
+  };
+
   const editing = session.editing;
-  const editBox = editing ? layout.byId.get(editing.id) : undefined;
+  const editBox =editing ? layout.byId.get(editing.id) : undefined;
 
   return (
     <div
@@ -270,6 +283,16 @@ export function MapCanvas({ ws, session }: { ws: Workspace; session: Session }) 
       className="map-canvas"
       tabIndex={0}
       onKeyDown={onKeyDown}
+      onCopy={(e) => onClipboardOut(e, copySelection(ws))}
+      onCut={(e) => onClipboardOut(e, cutSelection(ws))}
+      onPaste={(e) => {
+        if (session.editing || e.target !== containerRef.current) return;
+        e.preventDefault();
+        pasteClipboard(ws, {
+          fragmentJson: e.clipboardData.getData(FRAGMENT_MIME),
+          text: e.clipboardData.getData('text/plain'),
+        });
+      }}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}

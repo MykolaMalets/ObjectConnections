@@ -9,6 +9,9 @@ import {
   Workspace,
   addChild,
   addSheet,
+  deleteSheet,
+  mergeSheetIntoSelection,
+  moveSheetBy,
   drillDown,
   drillTo,
   drillUp,
@@ -20,6 +23,7 @@ import {
   undo,
 } from './state/store.ts';
 import { DialogHost, confirmDialog, promptDialog } from './ui/dialogs.tsx';
+import { MenuHost, showMenu } from './ui/menu.tsx';
 import { MapCanvas } from './view/MapCanvas.tsx';
 
 const AUTOSAVE_DELAY_MS = 1500;
@@ -157,6 +161,42 @@ export function App() {
     ws.close(s);
   };
 
+  const renameSheetAsk = async (s: Session, sheetId: string) => {
+    const sheet = s.doc.sheets.find((x) => x.id === sheetId);
+    const title = sheet && (await promptDialog('Название листа', sheet.title));
+    if (title) renameSheet(ws, sheetId, title);
+  };
+
+  const deleteSheetAsk = async (s: Session, sheetId: string) => {
+    const sheet = s.doc.sheets.find((x) => x.id === sheetId);
+    if (!sheet) return;
+    const count = sheet.rootIds.reduce(function size(sum: number, id: string): number {
+      return s.doc.nodes[id]!.children.reduce(size, sum + 1);
+    }, 0);
+    const ask = `Удалить лист «${sheet.title}» вместе с его картами (тем: ${count})? Это можно отменить через Ctrl+Z.`;
+    if (await confirmDialog(ask, 'Удалить')) deleteSheet(ws, sheetId);
+  };
+
+  const sheetMenu = (e: React.MouseEvent, s: Session, sheetId: string) => {
+    e.preventDefault();
+    const sheets = s.doc.sheets;
+    const index = sheets.findIndex((x) => x.id === sheetId);
+    const target = s.selection ? getNode(s.doc, s.selection) : undefined;
+    const targetOnOtherSheet = !!target && s.sheetId !== sheetId;
+    showMenu(e.clientX, e.clientY, [
+      { label: 'Переименовать…', run: () => void renameSheetAsk(s, sheetId) },
+      { label: 'Сдвинуть влево', disabled: index <= 0, run: () => moveSheetBy(ws, sheetId, -1) },
+      { label: 'Сдвинуть вправо', disabled: index >= sheets.length - 1, run: () => moveSheetBy(ws, sheetId, 1) },
+      {
+        label: targetOnOtherSheet ? `Влить в тему «${target.text}»` : 'Влить в выбранную тему (выберите тему на другом листе)',
+        disabled: !targetOnOtherSheet,
+        separator: true,
+        run: () => mergeSheetIntoSelection(ws, sheetId),
+      },
+      { label: 'Удалить лист…', disabled: sheets.length <= 1, separator: true, run: () => void deleteSheetAsk(s, sheetId) },
+    ]);
+  };
+
   const panel = host.activePanel ? host.panels.get(host.activePanel) : undefined;
   // Bars keep keyboard focus on the canvas: mousedown on their buttons never moves focus.
   const keepFocus = (e: React.MouseEvent) => {
@@ -166,6 +206,7 @@ export function App() {
   return (
     <div className="app">
       <DialogHost />
+      <MenuHost />
       <div className="toolbar" onMouseDown={keepFocus}>
         <button onClick={() => newSession(ws)}>Новая</button>
         <button onClick={() => void openFile(host)} title="Ctrl+O">Открыть</button>
@@ -276,11 +317,10 @@ export function App() {
             <button
               key={sheet.id}
               className={sheet.id === session.sheetId ? 'sheet active' : 'sheet'}
+              title="Двойной щелчок — переименовать, правая кнопка — меню листа"
               onClick={() => selectSheet(ws, sheet.id)}
-              onDoubleClick={async () => {
-                const title = await promptDialog('Название листа', sheet.title);
-                if (title) renameSheet(ws, sheet.id, title);
-              }}
+              onDoubleClick={() => void renameSheetAsk(session, sheet.id)}
+              onContextMenu={(e) => sheetMenu(e, session, sheet.id)}
             >
               {sheet.title}
             </button>

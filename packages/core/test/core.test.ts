@@ -156,6 +156,24 @@ test('extract a branch to a sheet with a link, then merge it back', () => {
   assert.throws(() => opsMergeSheetInto(doc, doc.sheets[0]!.id, a), OpError);
 });
 
+test('moveSheet reorders sheets and undo restores the order', () => {
+  const { history, doc } = sample();
+  const ids = ['s2', 's3'];
+  for (const id of ids) history.apply([{ t: 'insertSheet', sheet: { id, title: id, rootIds: [] } }]);
+  const first = doc.sheets[0]!.id;
+  const before = snapshot(doc);
+  history.apply([{ t: 'moveSheet', id: first, index: 2 }]);
+  assert.deepEqual(doc.sheets.map((s) => s.id), ['s2', 's3', first]);
+  history.apply([{ t: 'moveSheet', id: 's3', index: 0 }]);
+  assert.deepEqual(doc.sheets.map((s) => s.id), ['s3', 's2', first]);
+  history.undo();
+  history.undo();
+  assert.deepEqual(snapshot(doc), before);
+  assert.throws(() => history.apply([{ t: 'moveSheet', id: first, index: 3 }]), OpError);
+  assert.throws(() => history.apply([{ t: 'moveSheet', id: 'missing', index: 0 }]), OpError);
+  assert.deepEqual(snapshot(doc), before);
+});
+
 test('fragment moves a branch into another document with fresh ids', () => {
   const { history, doc, a, a1 } = sample();
   const def = { id: newId(), name: 'Owner', type: 'text' as const };

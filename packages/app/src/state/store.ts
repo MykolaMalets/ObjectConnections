@@ -1,17 +1,22 @@
 // Editor state: open files (sessions), selection, drill-down, and every user
 // action. Actions are the only code that calls History.apply in the app.
 
-import type { Doc, Id, MapNode, Op, Sheet } from '@oc/core';
+import type { Doc, Fragment, Id, MapNode, Op, Sheet } from '@oc/core';
 import {
   History,
   OpError,
   createDoc,
   createNode,
+  extractFragment,
   getNode,
   getSheet,
   isAncestorOrSelf,
   newId,
   opsExtractToSheet,
+  opsFromOutline,
+  opsImportFragment,
+  opsMergeSheetInto,
+  parseOutline,
   sheetOf,
 } from '@oc/core';
 import type { FileRef } from '../storage/provider.ts';
@@ -248,7 +253,7 @@ export function addFloating(ws: Workspace, position: { x: number; y: number }): 
   ws.notify();
 }
 
-export function removeSelected(ws: Workspace): void {
+export function removeSelected(ws: Workspace, label = 'Удалить'): void {
   const s = ws.session;
   const node = s?.selection ? getNode(s.doc, s.selection) : undefined;
   if (!s || !node || node.id === s.focusId) return;
@@ -256,7 +261,7 @@ export function removeSelected(ws: Workspace): void {
   if (node.parentId === null && siblings.length <= 1) return;
   const index = siblings.indexOf(node.id);
   const next = siblings[index + 1] ?? siblings[index - 1] ?? node.parentId;
-  if (run(s, [{ t: 'removeSubtree', id: node.id }], 'Удалить')) {
+  if (run(s, [{ t: 'removeSubtree', id: node.id }], label)) {
     s.selection = next;
     s.reveal = true;
   }
@@ -436,5 +441,146 @@ export function extractSelectedToSheet(ws: Workspace): void {
     s.selection = node.id;
     s.needsCenter = true;
   }
+  ws.notify();
+}
+
+// ---------------------------------------------------------------------------
+// Clipboard. A branch travels as a Fragment (JSON, custom MIME type) together
+// with a plain-text outline for other applications. Pasting plain text from
+// elsewhere turns an indented list into a branch.
+
+export const FRAGMENT_MIME = 'application/x-ocmap-fragment';
+
+export interface ClipboardData {
+  fragment: Fragment;
+  /** Indented outline of the branch, for pasting into other applications. */
+  text: string;
+}
+
+/** Last copied branch: used when the system clipboard cannot carry the fragment. */
+let lastCopy: ClipboardData | null = null;
+
+function fragmentText(fragment: Fragment): string {
+  const byId = new Map(fragment.nodes.map((n) => [n.id, n]));
+  const lines: string[] = [];
+  const walk = (id: Id, depth: number) => {
+    const node = byId.get(id);
+    if (!node) return;
+    lines.push(`${'  '.repeat(depth)}${node.text.replace(/\s*\n\s*/g, ' ')}`);
+    for (const child of node.children) walk(child, depth + 1);
+  };
+  walk(fragment.rootId, 0);
+  return lines.join('\n') + '\n';
+}
+
+/** Copies the selected branch. Returns what to put on the system clipboard. */
+export function copySelection(ws: Workspace): ClipboardData | null {
+  const s = ws.session;
+  if (!s?.selection || !getNode(s.doc, s.selection)) return null;
+  const fragment = extractFragment(s.doc, s.selection);
+  lastCopy = { fragment, text: fragmentText(fragment) };
+  return lastCopy;
+}
+
+/** Copies the selected branch and removes it, unless it is the only map of the sheet or the drill-down root. */
+export function cutSelection(ws: Workspace): ClipboardData | null {
+  const data = copySelection(ws);
+  if (data) removeSelected(ws, 'Вырезать');
+  return data;
+}
+
+function isFragment(value: unknown): value is Fragment {
+  const f = value as Fragment | null;
+  return !!f && f.format === 'ocmap-fragment' && Array.isArray(f.nodes) && typeof f.rootId === 'string';
+}
+
+/**
+ * Pastes clipboard content as children of the selected node. A fragment keeps
+ * notes, attributes and inner relations; plain text becomes topics, one per line,
+ * nested by indentation. Without clipboard content the last copied branch is used.
+ */
+export function pasteClipboard(ws: Workspace, data: { fragmentJson?: string; text?: string }): void {
+  const s = ws.session;
+  const parent = s?.selection ? getNode(s.doc, s.selection) : undefined;
+  if (!s || !parent) return;
+  let fragment: Fragment | undefined;
+  if (data.fragmentJson) {
+    try {
+      const parsed: unknown = JSON.parse(data.fragmentJson);
+      if (isFragment(parsed)) fragment = parsed;
+    } catch {
+      // Not ours; fall back to the text.
+    }
+  }
+  // Text we wrote ourselves stands for the richer fragment kept in memory.
+  if (!fragment && lastCopy && (!data.text || data.text === lastCopy.text)) fragment = lastCopy.fragment;
+
+  let ops: Op[];
+  let rootIds: Id[];
+  try {
+    if (fragment) {
+      const imported = opsImportFragment(s.doc, fragment, { parentId: parent.id });
+      ops = imported.ops;
+      rootIds = [imported.rootId];
+    } else {
+      const items = parseOutline(data.text ?? '');
+      if (items.length === 0) return;
+      ({ ops, rootIds } = opsFromOutline(items, { parentId: parent.id }));
+    }
+  } catch (error) {
+    console.warn('paste: clipboard content is not usable', error);
+    return;
+  }
+  if (parent.collapsed) ops.push({ t: 'patchNode', id: parent.id, patch: { collapsed: null } });
+  if (run(s, ops, 'Вставить')) {
+    s.selection = rootIds[0] ?? parent.id;
+    s.reveal = true;
+  }
+  ws.notify();
+}
+
+// ---------------------------------------------------------------------------
+// Sheets
+
+/** Removes a sheet with all its maps. The last sheet of a document cannot be removed. */
+export function deleteSheet(ws: Workspace, sheetId: Id): void {
+  const s = ws.session;
+  const sheet = s && getSheet(s.doc, sheetId);
+  if (!s || !sheet || s.doc.sheets.length <= 1) return;
+  const ops: Op[] = sheet.rootIds.map((id) => ({ t: 'removeSubtree', id }) satisfies Op);
+  ops.push({ t: 'removeSheet', id: sheetId });
+  if (run(s, ops, 'Удалить лист') && s.sheetId === sheetId) {
+    const index = Math.min(s.doc.sheets.length - 1, Math.max(0, s.doc.sheets.findIndex((x) => x.id === sheetId)));
+    selectSheet(ws, s.doc.sheets[index]?.id ?? s.doc.sheets[0]!.id);
+    return;
+  }
+  ws.notify();
+}
+
+export function moveSheetBy(ws: Workspace, sheetId: Id, delta: number): void {
+  const s = ws.session;
+  if (!s) return;
+  const index = s.doc.sheets.findIndex((x) => x.id === sheetId) + delta;
+  if (index < 0 || index >= s.doc.sheets.length) return;
+  run(s, [{ t: 'moveSheet', id: sheetId, index }], 'Переставить лист');
+  ws.notify();
+}
+
+/** Every map of the sheet becomes a branch of the selected topic; the sheet is removed. */
+export function mergeSheetIntoSelection(ws: Workspace, sheetId: Id): void {
+  const s = ws.session;
+  const target = s?.selection;
+  if (!s || !target) return;
+  let ops: Op[];
+  try {
+    ops = opsMergeSheetInto(s.doc, sheetId, target);
+  } catch (error) {
+    if (!(error instanceof OpError)) throw error;
+    console.warn(error.message);
+    return;
+  }
+  const node = getNode(s.doc, target)!;
+  if (node.collapsed) ops.push({ t: 'patchNode', id: target, patch: { collapsed: null } });
+  if (run(s, ops, 'Влить лист')) s.reveal = true;
   ws.notify();
 }
