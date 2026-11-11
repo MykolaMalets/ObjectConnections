@@ -396,3 +396,83 @@ button.icon {
   border: 1px solid #cfd6e2;
   border-radius: 6px;
 }
+
+/* Touch screens: larger targets and the edit bar under the map. */
+
+.touch-bar {
+  display: flex;
+  gap: 6px;
+  padding: 6px 8px;
+  background: #fff;
+  border-top: 1px solid #dde2ea;
+  flex: none;
+  overflow-x: auto;
+  white-space: nowrap;
+}
+
+.touch-bar button {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding-left: 6px;
+  padding-right: 6px;
+}
+
+@media (pointer: coarse) {
+  button,
+  select {
+    min-height: 40px;
+    padding: 6px 12px;
+  }
+
+  .tab .close {
+    min-width: 32px;
+  }
+
+  .context-menu button {
+    padding: 12px 14px;
+    font-size: 15px;
+  }
+
+  .dialog-buttons button {
+    min-width: 72px;
+  }
+}
+
+/* Narrow screens: the toolbar scrolls sideways instead of wrapping, panels cover the map. */
+
+@media (max-width: 700px) {
+  .toolbar {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+  }
+
+  .toolbar .spacer {
+    display: none;
+  }
+
+  .main {
+    position: relative;
+  }
+
+  .side {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 5;
+    width: min(100%, 360px);
+    max-width: none;
+    box-shadow: -6px 0 24px rgba(20, 30, 50, 0.15);
+  }
+}
+
+.side-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.side-head button.icon {
+  font-size: 18px;
+  line-height: 1;
+}

@@ -22,17 +22,12 @@ import {
   copySelection,
   cutSelection,
   pasteClipboard,
-  extractSelectedToSheet,
   openLink,
-  setUrlLink,
   cancelLinking,
   finishLinking,
-  removeRelation,
-  setRelationText,
-  startLinking,
 } from '../state/store.ts';
-import { promptDialog } from '../ui/dialogs.tsx';
 import { showMenu } from '../ui/menu.tsx';
+import { nodeMenuItems } from './nodeMenu.ts';
 import type { ClipboardData } from '../state/store.ts';
 import type { Direction, LayoutResult, NodeBox } from './layout.ts';
 import { hitTest, hitToggle, layoutRoots, neighbour } from './layout.ts';
@@ -43,6 +38,30 @@ type Drag =
   | { kind: 'pan'; sx: number; sy: number; vx: number; vy: number }
   | { kind: 'node'; id: Id; sx: number; sy: number; moved: boolean };
 
+/** Two fingers on the screen: zoom around their midpoint and pan with it. */
+interface Pinch {
+  dist: number;
+  mx: number;
+  my: number;
+  scale: number;
+  vx: number;
+  vy: number;
+}
+
+/** A finger that may still turn out to be a tap or a long press. */
+interface Press {
+  id: Id | null;
+  sx: number;
+  sy: number;
+  clientX: number;
+  clientY: number;
+  timer: number;
+}
+
+const LONG_PRESS_MS = 500;
+/** A finger that moves farther than this is panning, not tapping. */
+const TAP_SLOP = 10;
+const DOUBLE_TAP_MS = 350;
 const MIN_SCALE = 0.15;
 const MAX_SCALE = 4;
 const REVEAL_MARGIN = 48;
@@ -60,6 +79,12 @@ export function MapCanvas({ ws, session }: { ws: Workspace; session: Session }) 
   const drag = useRef<Drag | null>(null);
   const dropTarget = useRef<Id | null>(null);
   const cache = useRef<{ key: string; layout: LayoutResult } | null>(null);
+  // Touch: fingers on the screen (container coordinates), the gesture they make, the previous tap.
+  const fingers = useRef(new Map<number, { sx: number; sy: number }>());
+  const pinch = useRef<Pinch | null>(null);
+  const press = useRef<Press | null>(null);
+  const lastTap = useRef<{ at: number; sx: number; sy: number } | null>(null);
+  const lastPointerType = useRef('mouse');
 
   const measure = useMemo(() => {
     const canvas = document.createElement('canvas');
@@ -173,7 +198,148 @@ export function MapCanvas({ ws, session }: { ws: Workspace; session: Session }) 
     return { sx, sy, x: (sx - view.x) / view.scale, y: (sy - view.y) / view.scale };
   };
 
+  const cancelPress = () => {
+    if (press.current) clearTimeout(press.current.timer);
+    press.current = null;
+  };
+
+  const startPinch = () => {
+    const [a, b] = [...fingers.current.values()];
+    if (!a || !b) return;
+    pinch.current = {
+      dist: Math.max(1, Math.hypot(a.sx - b.sx, a.sy - b.sy)),
+      mx: (a.sx + b.sx) / 2,
+      my: (a.sy + b.sy) / 2,
+      scale: view.scale,
+      vx: view.x,
+      vy: view.y,
+    };
+  };
+
+  // Touch gestures: one finger pans, a tap selects, a double tap edits (or adds a
+  // topic on empty space), a long press opens the topic's menu, two fingers zoom.
+  // Dragging topics with a finger is not supported: use Cut and Paste from the menu.
+  const onTouchDown = (e: React.PointerEvent) => {
+    const p = locate(e);
+    fingers.current.set(e.pointerId, { sx: p.sx, sy: p.sy });
+    try {
+      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    } catch {
+      // The pointer is already gone (or synthetic); the gesture still works without capture.
+    }
+    if (fingers.current.size === 2) {
+      cancelPress();
+      lastTap.current = null;
+      drag.current = null;
+      startPinch();
+      return;
+    }
+    if (fingers.current.size > 2) return;
+    containerRef.current!.focus();
+    const toggle = hitToggle(layout, p.x, p.y);
+    if (toggle) {
+      toggleCollapse(ws, toggle.id);
+      return;
+    }
+    const box = hitTest(layout, p.x, p.y);
+    if (session.linking) {
+      if (box) finishLinking(ws, box.id);
+      else cancelLinking(ws);
+      return;
+    }
+    drag.current = { kind: 'pan', sx: p.sx, sy: p.sy, vx: view.x, vy: view.y };
+    const { clientX, clientY } = e;
+    press.current = {
+      id: box?.id ?? null,
+      sx: p.sx,
+      sy: p.sy,
+      clientX,
+      clientY,
+      timer: window.setTimeout(() => {
+        const current = press.current;
+        press.current = null;
+        if (!current?.id) return;
+        drag.current = null;
+        navigator.vibrate?.(15);
+        showMenu(clientX, clientY, nodeMenuItems(ws, session, current.id, true));
+      }, LONG_PRESS_MS),
+    };
+  };
+
+  const onTouchMove = (e: React.PointerEvent) => {
+    const finger = fingers.current.get(e.pointerId);
+    if (!finger) return;
+    const p = locate(e);
+    finger.sx = p.sx;
+    finger.sy = p.sy;
+    const pn = pinch.current;
+    if (pn) {
+      const [a, b] = [...fingers.current.values()];
+      if (!a || !b) return;
+      const scale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, (pn.scale * Math.hypot(a.sx - b.sx, a.sy - b.sy)) / pn.dist));
+      const mx = (a.sx + b.sx) / 2;
+      const my = (a.sy + b.sy) / 2;
+      // The map point that was under the starting midpoint stays under the current one.
+      view.x = mx - ((pn.mx - pn.vx) * scale) / pn.scale;
+      view.y = my - ((pn.my - pn.vy) * scale) / pn.scale;
+      view.scale = scale;
+      ws.notify();
+      return;
+    }
+    if (press.current && Math.hypot(p.sx - press.current.sx, p.sy - press.current.sy) > TAP_SLOP) {
+      cancelPress();
+      lastTap.current = null;
+    }
+    const d = drag.current;
+    if (d?.kind === 'pan') {
+      view.x = d.vx + p.sx - d.sx;
+      view.y = d.vy + p.sy - d.sy;
+      ws.notify();
+    }
+  };
+
+  const onTouchUp = (e: React.PointerEvent) => {
+    if (!fingers.current.delete(e.pointerId)) return;
+    if (pinch.current) {
+      if (fingers.current.size >= 2) {
+        startPinch();
+        return;
+      }
+      pinch.current = null;
+      // The remaining finger goes on panning from where it is.
+      const [rest] = [...fingers.current.values()];
+      drag.current = rest ? { kind: 'pan', sx: rest.sx, sy: rest.sy, vx: view.x, vy: view.y } : null;
+      return;
+    }
+    drag.current = null;
+    const tap = press.current;
+    if (!tap || e.type === 'pointercancel') {
+      cancelPress();
+      return;
+    }
+    cancelPress();
+    const previous = lastTap.current;
+    const now = Date.now();
+    if (previous && now - previous.at < DOUBLE_TAP_MS && Math.hypot(tap.sx - previous.sx, tap.sy - previous.sy) < TAP_SLOP * 3) {
+      lastTap.current = null;
+      if (tap.id) {
+        select(ws, tap.id);
+        startEdit(ws);
+      } else {
+        addFloating(ws, { x: Math.round((tap.sx - view.x) / view.scale), y: Math.round((tap.sy - view.y) / view.scale) });
+      }
+      return;
+    }
+    lastTap.current = { at: now, sx: tap.sx, sy: tap.sy };
+    if (tap.id && !((e.ctrlKey || e.metaKey) && openLink(ws, tap.id))) select(ws, tap.id);
+  };
+
   const onPointerDown = (e: React.PointerEvent) => {
+    lastPointerType.current = e.pointerType;
+    if (e.pointerType === 'touch') {
+      onTouchDown(e);
+      return;
+    }
     if (e.button !== 0 && e.button !== 1) return;
     containerRef.current!.focus();
     const p = locate(e);
@@ -199,6 +365,10 @@ export function MapCanvas({ ws, session }: { ws: Workspace; session: Session }) 
   };
 
   const onPointerMove = (e: React.PointerEvent) => {
+    if (e.pointerType === 'touch') {
+      onTouchMove(e);
+      return;
+    }
     const d = drag.current;
     if (!d) return;
     const p = locate(e);
@@ -222,6 +392,10 @@ export function MapCanvas({ ws, session }: { ws: Workspace; session: Session }) 
   };
 
   const onPointerUp = (e: React.PointerEvent) => {
+    if (e.pointerType === 'touch') {
+      onTouchUp(e);
+      return;
+    }
     const d = drag.current;
     drag.current = null;
     if (!d || d.kind !== 'node' || !d.moved) return;
@@ -242,6 +416,8 @@ export function MapCanvas({ ws, session }: { ws: Workspace; session: Session }) 
   };
 
   const onDoubleClick = (e: React.MouseEvent) => {
+    // Touch double taps are recognised in onTouchUp; the browser's own dblclick would repeat them.
+    if (lastPointerType.current === 'touch') return;
     const p = locate(e);
     if (hitToggle(layout, p.x, p.y)) return;
     const box = hitTest(layout, p.x, p.y);
@@ -290,82 +466,11 @@ export function MapCanvas({ ws, session }: { ws: Workspace; session: Session }) 
 
   const onContextMenu = (e: React.MouseEvent) => {
     e.preventDefault();
-    if (session.editing) return;
+    // On touch screens the long press is handled by the gesture code, which knows whether the finger moved.
+    if (session.editing || lastPointerType.current === 'touch') return;
     const p = locate(e);
     const box = hitTest(layout, p.x, p.y);
-    if (!box) return;
-    select(ws, box.id);
-    const node = session.doc.nodes[box.id]!;
-    const isViewRoot = node.parentId === null || node.id === session.focusId;
-    const link = node.link;
-    showMenu(e.clientX, e.clientY, [
-      { label: 'Подтема\tTab', run: () => addChild(ws) },
-      { label: 'Тема рядом\tEnter', disabled: isViewRoot, run: () => addSibling(ws) },
-      { label: 'Изменить текст\tF2', run: () => startEdit(ws) },
-      {
-        label: 'Копировать\tCtrl+C',
-        separator: true,
-        run: () => {
-          const data = copySelection(ws);
-          if (data) void navigator.clipboard?.writeText(data.text).catch(() => undefined);
-        },
-      },
-      {
-        label: 'Вырезать\tCtrl+X',
-        disabled: isViewRoot,
-        run: () => {
-          const data = cutSelection(ws);
-          if (data) void navigator.clipboard?.writeText(data.text).catch(() => undefined);
-        },
-      },
-      {
-        label: 'Вставить\tCtrl+V',
-        run: async () => {
-          const text = await navigator.clipboard?.readText().catch(() => undefined);
-          pasteClipboard(ws, text === undefined ? {} : { text });
-        },
-      },
-      {
-        label: link?.type === 'node' ? 'Перейти по ссылке\tCtrl+щелчок' : 'Открыть ссылку\tCtrl+щелчок',
-        separator: true,
-        disabled: !link || link.type === 'file',
-        run: () => void openLink(ws, node.id),
-      },
-      {
-        label: link?.type === 'url' ? 'Изменить ссылку…' : 'Добавить ссылку…',
-        disabled: !!link && link.type !== 'url',
-        run: async () => {
-          const url = await promptDialog('Адрес ссылки (пусто — убрать ссылку)', link?.type === 'url' ? link.url : 'https://');
-          if (url !== null) setUrlLink(ws, node.id, url === 'https://' ? null : url);
-        },
-      },
-      {
-        label: node.collapsed ? 'Развернуть ветку\t+' : 'Свернуть ветку\t−',
-        separator: true,
-        disabled: node.children.length === 0 || node.parentId === null,
-        run: () => toggleCollapse(ws, node.id),
-      },
-      { label: 'Показать как отдельную карту\tF6', run: () => drillDown(ws) },
-      { label: 'Вынести на новый лист', disabled: node.parentId === null, run: () => extractSelectedToSheet(ws) },
-      { label: 'Связать с темой…', separator: true, run: () => startLinking(ws) },
-      ...Object.values(session.doc.relations)
-        .filter((r) => r.from === node.id || r.to === node.id)
-        .flatMap((r) => {
-          const other = session.doc.nodes[r.from === node.id ? r.to : r.from]?.text ?? '…';
-          const name = `${r.from === node.id ? '→' : '←'} «${other}»${r.text ? ` (${r.text})` : ''}`;
-          return [
-            {
-              label: `Подпись связи ${name}…`,
-              run: async () => {
-                const text = await promptDialog('Подпись связи (пусто — без подписи)', r.text ?? '');
-                if (text !== null) setRelationText(ws, r.id, text);
-              },
-            },
-            { label: `Удалить связь ${name}`, run: () => removeRelation(ws, r.id) },
-          ];
-        }),
-      { label: 'Удалить\tDel', separator: true, disabled: isViewRoot, run: () => removeSelected(ws) },
-    ]);
+    if (box) showMenu(e.clientX, e.clientY, nodeMenuItems(ws, session, box.id));
   };
 
   // Clipboard events (not key handlers) give access to the system clipboard without a permission prompt.
@@ -412,6 +517,9 @@ export function MapCanvas({ ws, session }: { ws: Workspace; session: Session }) 
           scale={view.scale}
           left={editBox.x * view.scale + view.x}
           top={editBox.y * view.scale + view.y}
+          onInput={(text) => {
+            editing.text = text;
+          }}
           onDone={(text) => finishEdit(ws, text)}
         />
       )}
@@ -426,11 +534,13 @@ interface NodeEditorProps {
   scale: number;
   left: number;
   top: number;
+  /** Called on every change, so buttons elsewhere can save the text without waiting for a blur. */
+  onInput: (text: string) => void;
   /** Called with the new text, or null when the edit is cancelled. */
   onDone: (text: string | null) => void;
 }
 
-function NodeEditor({ box, text, selectAll, scale, left, top, onDone }: NodeEditorProps) {
+function NodeEditor({ box, text, selectAll, scale, left, top, onInput, onDone }: NodeEditorProps) {
   const ref = useRef<HTMLTextAreaElement>(null);
   const style = levelStyle(box.depth);
 
@@ -468,6 +578,7 @@ function NodeEditor({ box, text, selectAll, scale, left, top, onDone }: NodeEdit
           onDone(e.currentTarget.value);
         }
       }}
+      onInput={(e) => onInput(e.currentTarget.value)}
       onBlur={(e) => onDone(e.currentTarget.value)}
     />
   );

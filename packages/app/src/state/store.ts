@@ -27,7 +27,7 @@ export const NEW_ROOT_TEXT = 'Новая карта';
 
 export interface Editing {
   id: Id;
-  /** Initial content of the editor. */
+  /** Content of the editor: the initial text, then kept up to date as the user types. */
   text: string;
   /** Select the whole text (F2) instead of placing the caret at the end (typing). */
   selectAll: boolean;
@@ -289,6 +289,12 @@ export function finishEdit(ws: Workspace, text: string | null): void {
     run(s, [{ t: 'patchNode', id: node.id, patch: { text } }], 'Изменить текст');
   }
   ws.notify();
+}
+
+/** Saves the text being edited (as typed so far, see NodeEditor) and closes the editor. */
+export function commitEdit(ws: Workspace): void {
+  const editing = ws.session?.editing;
+  if (editing) finishEdit(ws, editing.text);
 }
 
 export function toggleCollapse(ws: Workspace, id: Id, collapsed?: boolean): void {

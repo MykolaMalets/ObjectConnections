@@ -27,6 +27,7 @@ import {
 import { DialogHost, confirmDialog, promptDialog } from './ui/dialogs.tsx';
 import { MenuHost, showMenu } from './ui/menu.tsx';
 import { MapCanvas } from './view/MapCanvas.tsx';
+import { TouchBar, isTouchScreen } from './view/TouchBar.tsx';
 
 const AUTOSAVE_DELAY_MS = 1500;
 const STORAGE_CHECK_MS = 2000;
@@ -144,6 +145,7 @@ export function App() {
   const ws = host.ws;
   const version = useSyncExternalStore(ws.subscribe, ws.getVersion);
   const session = ws.session;
+  const touch = useMemo(isTouchScreen, []);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -356,11 +358,18 @@ export function App() {
         )}
         {panel && (
           <aside className="side">
-            <h2>{panel.title}</h2>
+            <h2 className="side-head">
+              {panel.title}
+              <button className="icon" title="Закрыть панель" onClick={() => host.togglePanel(panel.id)}>
+                ×
+              </button>
+            </h2>
             {panel.render(host.editor)}
           </aside>
         )}
       </div>
+
+      {session && touch && <TouchBar ws={ws} session={session} />}
 
       {session && (
         <div className="sheets" onMouseDown={keepFocus}>
