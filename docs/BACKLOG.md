@@ -76,7 +76,9 @@
 
 ## Этап 4. Android и Google
 
-- [ ] [O] PWA: манифест, service worker, офлайн-кэш.
+- [x] [O] PWA: манифест, значки (`scripts/make-icons.mjs`), service worker с офлайн-кэшем (`public/sw.js`, только в сборке), относительные пути (`base: './'`). Установленное приложение открывает `.ocmap` двойным щелчком (`file_handlers` + `handleLaunchedFiles`). Офлайн-запуск проверен.
+- [ ] [S] Пользователь: установить приложение в Edge/Chrome (значок «Установить» в адресной строке на `npm run build` + `npm run preview` или на хостинге) и проверить открытие `.ocmap` двойным щелчком.
+- [ ] [O] Публикация на HTTPS-хостинг (GitHub Pages: workflow сборки `packages/app/dist`) — после решения пользователя о хостинге.
 - [ ] [O] Провайдер Google Drive (OAuth, список, чтение, запись, обнаружение конфликта версий).
 - [ ] [O] Сенсорные жесты и упрощённый UI для телефона.
 - [ ] [O] Напоминания через Google Calendar (`reminders[].calendarEventId`).

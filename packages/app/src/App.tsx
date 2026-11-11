@@ -3,7 +3,7 @@ import { getNode, validate } from '@oc/core';
 import { useEffect, useMemo, useSyncExternalStore } from 'react';
 import { builtinExtensions } from './ext/builtin/index.ts';
 import { ExtensionHost } from './ext/host.ts';
-import { openFile, saveFile, syncFromStorage } from './state/files.ts';
+import { handleLaunchedFiles, openFile, saveFile, syncFromStorage } from './state/files.ts';
 import { dueReminders } from './state/reminders.ts';
 import {
   Session,
@@ -111,6 +111,7 @@ function createHost(): ExtensionHost {
   const ws = new Workspace();
   const host = new ExtensionHost(ws, builtinExtensions);
   restoreDrafts(ws);
+  handleLaunchedFiles(host);
   if (ws.sessions.length === 0) newSession(ws);
   if (import.meta.env.DEV) Object.assign(window, { __ws: ws, __host: host });
   return host;

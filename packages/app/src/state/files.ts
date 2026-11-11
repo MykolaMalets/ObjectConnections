@@ -3,6 +3,7 @@
 import type { Doc } from '@oc/core';
 import { serializeDoc, validate } from '@oc/core';
 import type { ExtensionHost } from '../ext/host.ts';
+import type { FileRef } from '../storage/provider.ts';
 import { FILE_EXTENSION } from '../storage/provider.ts';
 import { alertDialog, confirmDialog } from '../ui/dialogs.tsx';
 import { Session } from './store.ts';
@@ -29,32 +30,56 @@ function parseDoc(text: string): { doc: Doc } | { problems: string[] } {
 }
 
 export async function openFile(host: ExtensionHost): Promise<void> {
-  const ws = host.ws;
   try {
-    const provider = host.defaultStorage();
-    const ref = await provider.pickOpen();
-    if (!ref) return;
-    // One file, one tab: two tabs of the same file would overwrite each other's changes.
-    for (const open of ws.sessions) {
-      if (open.file?.provider === ref.provider && (await provider.same?.(open.file, ref))) {
-        ws.activate(open);
-        void alertDialog(`Файл «${ref.name}» уже открыт — переключаю на его вкладку.`);
-        return;
-      }
-    }
-    const { text, version } = await provider.read(ref);
-    const parsed = parseDoc(text);
-    if ('problems' in parsed) {
-      void alertDialog(`Файл «${ref.name}» не открыт: ${parsed.problems.slice(0, 5).join('; ')}`);
-      return;
-    }
-    const session = new Session(parsed.doc, displayName(ref.name));
-    session.file = ref;
-    session.fileVersion = version;
-    ws.add(session);
+    const ref = await host.defaultStorage().pickOpen();
+    if (ref) await openRef(host, ref);
   } catch (error) {
     void alertDialog(`Не удалось открыть файл: ${messageOf(error)}`);
   }
+}
+
+/**
+ * Files the operating system hands to the installed app (double-click on an
+ * .ocmap file, "Open with"). See file_handlers in public/manifest.webmanifest.
+ */
+export function handleLaunchedFiles(host: ExtensionHost): void {
+  const launchQueue = (window as unknown as { launchQueue?: LaunchQueue }).launchQueue;
+  if (!launchQueue || !host.storage.has('local')) return;
+  launchQueue.setConsumer(async (params) => {
+    for (const handle of params.files) {
+      if (handle.kind !== 'file') continue;
+      await openRef(host, { provider: 'local', name: handle.name, handle }).catch((error: unknown) =>
+        alertDialog(`Не удалось открыть «${handle.name}»: ${messageOf(error)}`),
+      );
+    }
+  });
+}
+
+interface LaunchQueue {
+  setConsumer(consumer: (params: { files: FileSystemHandle[] }) => void | Promise<void>): void;
+}
+
+async function openRef(host: ExtensionHost, ref: FileRef): Promise<void> {
+  const ws = host.ws;
+  const provider = host.storageFor(ref);
+  // One file, one tab: two tabs of the same file would overwrite each other's changes.
+  for (const open of ws.sessions) {
+    if (open.file?.provider === ref.provider && (await provider.same?.(open.file, ref))) {
+      ws.activate(open);
+      void alertDialog(`Файл «${ref.name}» уже открыт — переключаю на его вкладку.`);
+      return;
+    }
+  }
+  const { text, version } = await provider.read(ref);
+  const parsed = parseDoc(text);
+  if ('problems' in parsed) {
+    void alertDialog(`Файл «${ref.name}» не открыт: ${parsed.problems.slice(0, 5).join('; ')}`);
+    return;
+  }
+  const session = new Session(parsed.doc, displayName(ref.name));
+  session.file = ref;
+  session.fileVersion = version;
+  ws.add(session);
 }
 
 /**

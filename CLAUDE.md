@@ -23,6 +23,8 @@
 
 - `npm test` — тесты ядра (встроенный `node --test`, TypeScript исполняется Node 24 напрямую).
 - `npm run typecheck` — проверка типов (у каждого пакета свой `tsconfig.json`; ядро собирается без DOM).
+- `npm run build`, затем `npm run preview -w @oc/app` — собранное приложение на http://localhost:4173 (с service worker; так проверяется установка и офлайн).
+- `node scripts/make-icons.mjs` — пересоздать значки приложения в `packages/app/public/icons`.
 - `npm run dev` — редактор на http://localhost:5173. В dev-режиме рабочее пространство доступно как `window.__ws` — удобно проверять состояние из консоли.
 
 ## Правила кода
