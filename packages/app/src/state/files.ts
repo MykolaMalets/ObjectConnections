@@ -3,9 +3,9 @@
 import type { Doc } from '@oc/core';
 import { serializeDoc, validate } from '@oc/core';
 import type { ExtensionHost } from '../ext/host.ts';
-import type { FileRef } from '../storage/provider.ts';
+import type { FileRef, StorageProvider } from '../storage/provider.ts';
 import { FILE_EXTENSION } from '../storage/provider.ts';
-import { alertDialog, confirmDialog } from '../ui/dialogs.tsx';
+import { alertDialog, choiceDialog, confirmDialog } from '../ui/dialogs.tsx';
 import { Session } from './store.ts';
 
 const displayName = (fileName: string) =>
@@ -29,9 +29,21 @@ function parseDoc(text: string): { doc: Doc } | { problems: string[] } {
   return problems.length ? { problems } : { doc };
 }
 
+/** With several storages, asks the user which one to use. Null when cancelled. */
+async function chooseStorage(host: ExtensionHost, question: string): Promise<StorageProvider | null> {
+  const providers = [...host.storage.values()];
+  if (providers.length <= 1) return host.defaultStorage();
+  const index = await choiceDialog(
+    question,
+    providers.map((p) => p.title),
+  );
+  return index === null ? null : providers[index]!;
+}
+
 export async function openFile(host: ExtensionHost): Promise<void> {
   try {
-    const ref = await host.defaultStorage().pickOpen();
+    const provider = await chooseStorage(host, 'Откуда открыть карту?');
+    const ref = await provider?.pickOpen();
     if (ref) await openRef(host, ref);
   } catch (error) {
     void alertDialog(`Не удалось открыть файл: ${messageOf(error)}`);
@@ -94,7 +106,8 @@ export async function saveFile(host: ExtensionHost, session: Session, auto = fal
   session.saving = true;
   try {
     if (!session.file) {
-      const ref = await host.defaultStorage().pickSave(session.name + FILE_EXTENSION);
+      const storage = await chooseStorage(host, `Где сохранить «${session.name}»?`);
+      const ref = await storage?.pickSave(session.name + FILE_EXTENSION);
       if (!ref) return;
       session.file = ref;
       session.name = displayName(ref.name);
@@ -162,6 +175,8 @@ export async function syncFromStorage(host: ExtensionHost, session: Session): Pr
     session.conflict = false;
     host.ws.notify();
   } catch (error) {
+    // Signed out of a cloud storage: keep the version, so the save after signing in still detects outside changes.
+    if (error instanceof Error && error.name === 'SignInRequired') return;
     // Access was lost: stop checking until the next successful save sets a version again.
     console.warn('sync from storage stopped', error);
     session.fileVersion = '';

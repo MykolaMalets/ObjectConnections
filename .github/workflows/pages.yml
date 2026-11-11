@@ -29,7 +29,13 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run typecheck
+      # Google sign-in settings: repository variables (Settings → Secrets and variables → Actions → Variables).
+      # Without them the app is built without Google Drive.
       - run: npm run build
+        env:
+          VITE_GOOGLE_CLIENT_ID: ${{ vars.VITE_GOOGLE_CLIENT_ID }}
+          VITE_GOOGLE_API_KEY: ${{ vars.VITE_GOOGLE_API_KEY }}
+          VITE_GOOGLE_APP_ID: ${{ vars.VITE_GOOGLE_APP_ID }}
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

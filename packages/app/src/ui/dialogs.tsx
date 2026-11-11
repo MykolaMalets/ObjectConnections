@@ -3,13 +3,16 @@
 
 import { useEffect, useRef, useSyncExternalStore } from 'react';
 
+type Value = string | boolean | number | null;
+
 interface Request {
-  kind: 'alert' | 'confirm' | 'prompt';
+  kind: 'alert' | 'confirm' | 'prompt' | 'choice';
   message: string;
   okLabel: string;
   cancelLabel: string;
   initial: string;
-  resolve: (value: string | boolean | null) => void;
+  options: string[];
+  resolve: (value: Value) => void;
 }
 
 const queue: Request[] = [];
@@ -21,14 +24,14 @@ function changed(): void {
   for (const listener of listeners) listener();
 }
 
-function open(kind: Request['kind'], message: string, okLabel: string, initial = '', cancelLabel = 'Отмена'): Promise<string | boolean | null> {
+function open(kind: Request['kind'], message: string, okLabel: string, initial = '', cancelLabel = 'Отмена', options: string[] = []): Promise<Value> {
   return new Promise((resolve) => {
-    queue.push({ kind, message, okLabel, cancelLabel, initial, resolve });
+    queue.push({ kind, message, okLabel, cancelLabel, initial, options, resolve });
     changed();
   });
 }
 
-function close(value: string | boolean | null): void {
+function close(value: Value): void {
   queue.shift()?.resolve(value);
   changed();
 }
@@ -45,6 +48,12 @@ export async function confirmDialog(message: string, okLabel = 'OK', cancelLabel
 export async function promptDialog(message: string, initial = ''): Promise<string | null> {
   const value = await open('prompt', message, 'OK', initial);
   return typeof value === 'string' ? value : null;
+}
+
+/** One button per option. Resolves with the index of the chosen option, or null when cancelled. */
+export async function choiceDialog(message: string, options: string[]): Promise<number | null> {
+  const value = await open('choice', message, '', '', 'Отмена', options);
+  return typeof value === 'number' ? value : null;
 }
 
 /** Renders the dialog at the front of the queue. Mount once, at the app root. */
@@ -67,7 +76,7 @@ export function DialogHost() {
   }, [request]);
 
   if (!request) return null;
-  const accept = () => close(request.kind === 'prompt' ? (input.current?.value ?? '') : true);
+  const accept = () => close(request.kind === 'prompt' ? (input.current?.value ?? '') : request.kind === 'choice' ? 0 : true);
   const cancel = () => close(request.kind === 'alert' ? true : request.kind === 'confirm' ? false : null);
 
   return (
@@ -84,9 +93,17 @@ export function DialogHost() {
         {request.kind === 'prompt' && <input ref={input} defaultValue={request.initial} />}
         <div className="dialog-buttons">
           {request.kind !== 'alert' && <button onClick={cancel}>{request.cancelLabel}</button>}
-          <button ref={ok} className="primary" onClick={accept}>
-            {request.okLabel}
-          </button>
+          {request.kind === 'choice' ? (
+            request.options.map((option, index) => (
+              <button key={option} ref={index === 0 ? ok : undefined} className="primary" onClick={() => close(index)}>
+                {option}
+              </button>
+            ))
+          ) : (
+            <button ref={ok} className="primary" onClick={accept}>
+              {request.okLabel}
+            </button>
+          )}
         </div>
       </div>
     </div>

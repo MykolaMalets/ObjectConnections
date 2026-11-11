@@ -25,6 +25,7 @@ function isAbort(error: unknown): boolean {
 
 export const localFs: StorageProvider = {
   id: 'local',
+  title: 'Этот компьютер',
   canAutosave: true,
 
   async pickOpen() {
@@ -85,6 +86,7 @@ export const localFs: StorageProvider = {
 /** Fallback for browsers without the File System Access API: open by upload, save by download. */
 export const downloadFs: StorageProvider = {
   id: 'download',
+  title: 'Файл на устройстве',
   canAutosave: false,
 
   pickOpen() {

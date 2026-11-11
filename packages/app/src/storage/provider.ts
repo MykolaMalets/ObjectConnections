@@ -17,6 +17,8 @@ export interface FileContent {
 
 export interface StorageProvider {
   id: string;
+  /** Shown when the user chooses where to open or save a file. */
+  title: string;
   /** True when write() saves in place without user interaction, so autosave is possible. */
   canAutosave: boolean;
   /** Lets the user choose an existing file. Null when cancelled. */

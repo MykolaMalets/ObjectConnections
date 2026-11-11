@@ -3,6 +3,7 @@
 
 import { downloadFs, localFs, hasFileSystemAccess } from '../../storage/localFs.ts';
 import type { Extension } from '../api.ts';
+import { googleDriveExtension } from '../google/drive.ts';
 import { exportFreeMindExtension } from './exportFreeMind.ts';
 import { exportMarkdownExtension } from './exportMarkdown.ts';
 import { exportSvgExtension } from './exportSvg.ts';
@@ -21,6 +22,7 @@ const localFilesExtension: Extension = {
 
 export const builtinExtensions: Extension[] = [
   localFilesExtension,
+  googleDriveExtension,
   exportMarkdownExtension,
   exportFreeMindExtension,
   exportSvgExtension,
