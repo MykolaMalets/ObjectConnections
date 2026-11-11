@@ -15,7 +15,7 @@ Run `oc` as:
 node <repo>/packages/cli/src/main.ts <command> ...
 ```
 
-`<repo>` is the ObjectConnections repository (`C:\Users\Mykola\VSCode\ObjectConnections\ObjectConnections` on the owner's machine). Inside that repository `npm run oc -- <command> ...` works too. `oc help` lists every command.
+`<repo>` is the folder where the ObjectConnections repository is checked out. Inside that repository `npm run oc -- <command> ...` works too. `oc help` lists every command.
 
 ## Rules
 
