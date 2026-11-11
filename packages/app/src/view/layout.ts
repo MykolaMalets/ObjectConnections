@@ -47,10 +47,26 @@ interface Sized {
   children: Id[];
 }
 
-/** Text shown for a node; nodes that link to another node get a marker. */
+const PROMPT_ICONS = { draft: '💬', queued: '⏳', running: '🤖', done: '✅', error: '⚠️' } as const;
+
+/** Icons for what a node carries, in a fixed order. Shown after the text, so layout reserves room for them. */
+export function nodeIcons(doc: Doc, id: Id): string[] {
+  const node = doc.nodes[id]!;
+  const icons: string[] = [];
+  if (node.link?.type === 'node') icons.push('↗');
+  if (node.link?.type === 'url') icons.push('🔗');
+  if (node.link?.type === 'file') icons.push('📄');
+  if (node.notes) icons.push('📝');
+  if (node.prompt) icons.push(PROMPT_ICONS[node.prompt.status] ?? '💬');
+  if (node.reminders?.length) icons.push('⏰');
+  return icons;
+}
+
+/** Text shown for a node: its title followed by its icons. */
 export function displayText(doc: Doc, id: Id): string {
   const node = doc.nodes[id]!;
-  return node.link?.type === 'node' ? `${node.text} ↗` : node.text;
+  const icons = nodeIcons(doc, id);
+  return icons.length ? `${node.text} ${icons.join(' ')}` : node.text;
 }
 
 /**

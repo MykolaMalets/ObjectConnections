@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import type { Doc, Id, Op } from '@oc/core';
 import { applyOps, createDoc, createNode } from '@oc/core';
 import type { Measure } from '../src/view/layout.ts';
-import { hitTest, layoutRoots, neighbour } from '../src/view/layout.ts';
+import { displayText, hitTest, layoutRoots, neighbour } from '../src/view/layout.ts';
 
 const measure: Measure = (text) => ({ w: 20 + text.length * 7, h: 24, lines: [text] });
 
@@ -93,6 +93,20 @@ test('hit test and keyboard neighbours', () => {
   assert.equal(neighbour(doc, layout, kids[0]!, 'down'), kids[1]);
   assert.equal(neighbour(doc, layout, grand[0]!, 'down'), grand[1]);
   assert.equal(neighbour(doc, layout, grand[1]!, 'up'), grand[0]);
+});
+
+test('display text carries icons for links, notes, prompts and reminders', () => {
+  const { doc, kids } = build();
+  const [a, b, c] = kids as [Id, Id, Id];
+  applyOps(doc, [
+    { t: 'patchNode', id: a, patch: { link: { type: 'url', url: 'https://example.com' }, notes: 'n' } },
+    { t: 'patchNode', id: b, patch: { prompt: { text: 'p', status: 'queued', scope: 'subtree' } } },
+    { t: 'patchNode', id: c, patch: { link: { type: 'node', nodeId: a }, reminders: [{ id: 'r', at: '2026-11-12T09:00:00Z' }] } },
+  ]);
+  assert.equal(displayText(doc, a), 'A 🔗 📝');
+  assert.equal(displayText(doc, b), 'B ⏳');
+  assert.equal(displayText(doc, c), 'C ↗ ⏰');
+  assert.equal(displayText(doc, kids[3]!), 'D');
 });
 
 test('layout of 5000 nodes is fast', () => {

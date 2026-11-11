@@ -584,3 +584,38 @@ export function mergeSheetIntoSelection(ws: Workspace, sheetId: Id): void {
   if (run(s, ops, 'Влить лист')) s.reveal = true;
   ws.notify();
 }
+
+// ---------------------------------------------------------------------------
+// Links
+
+/** Sets or clears a web link on a node. A missing scheme gets https://. */
+export function setUrlLink(ws: Workspace, id: Id, url: string | null): void {
+  const s = ws.session;
+  if (!s || !getNode(s.doc, id)) return;
+  let link: unknown = null;
+  if (url !== null && url.trim()) {
+    const value = url.trim();
+    link = { type: 'url', url: /^[a-z][a-z0-9+.-]*:/i.test(value) ? value : `https://${value}` };
+  }
+  run(s, [{ t: 'patchNode', id, patch: { link } }], link ? 'Задать ссылку' : 'Убрать ссылку');
+  ws.notify();
+}
+
+/** Follows the node's link: web links open in a new browser tab, node links jump to the linked branch. */
+export function openLink(ws: Workspace, id: Id): boolean {
+  const s = ws.session;
+  const link = s && getNode(s.doc, id)?.link;
+  if (!s || !link) return false;
+  if (link.type === 'url') {
+    // Only web and mail links: other schemes (javascript:, file:) are not opened from a map.
+    if (!/^(https?:|mailto:)/i.test(link.url)) return false;
+    window.open(link.url, '_blank', 'noopener,noreferrer');
+    return true;
+  }
+  if (link.type === 'node' && !link.docId && getNode(s.doc, link.nodeId)) {
+    s.selection = id;
+    drillDown(ws);
+    return true;
+  }
+  return false;
+}

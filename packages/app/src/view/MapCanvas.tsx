@@ -22,7 +22,12 @@ import {
   copySelection,
   cutSelection,
   pasteClipboard,
+  extractSelectedToSheet,
+  openLink,
+  setUrlLink,
 } from '../state/store.ts';
+import { promptDialog } from '../ui/dialogs.tsx';
+import { showMenu } from '../ui/menu.tsx';
 import type { ClipboardData } from '../state/store.ts';
 import type { Direction, LayoutResult, NodeBox } from './layout.ts';
 import { hitTest, hitToggle, layoutRoots, neighbour } from './layout.ts';
@@ -172,6 +177,7 @@ export function MapCanvas({ ws, session }: { ws: Workspace; session: Session }) 
       return;
     }
     const box = e.button === 0 ? hitTest(layout, p.x, p.y) : undefined;
+    if (box && (e.ctrlKey || e.metaKey) && openLink(ws, box.id)) return;
     if (box) {
       drag.current = { kind: 'node', id: box.id, sx: p.sx, sy: p.sy, moved: false };
       select(ws, box.id);
@@ -266,6 +272,69 @@ export function MapCanvas({ ws, session }: { ws: Workspace; session: Session }) 
     if (handled) e.preventDefault();
   };
 
+  const onContextMenu = (e: React.MouseEvent) => {
+    e.preventDefault();
+    if (session.editing) return;
+    const p = locate(e);
+    const box = hitTest(layout, p.x, p.y);
+    if (!box) return;
+    select(ws, box.id);
+    const node = session.doc.nodes[box.id]!;
+    const isViewRoot = node.parentId === null || node.id === session.focusId;
+    const link = node.link;
+    showMenu(e.clientX, e.clientY, [
+      { label: 'Подтема\tTab', run: () => addChild(ws) },
+      { label: 'Тема рядом\tEnter', disabled: isViewRoot, run: () => addSibling(ws) },
+      { label: 'Изменить текст\tF2', run: () => startEdit(ws) },
+      {
+        label: 'Копировать\tCtrl+C',
+        separator: true,
+        run: () => {
+          const data = copySelection(ws);
+          if (data) void navigator.clipboard?.writeText(data.text).catch(() => undefined);
+        },
+      },
+      {
+        label: 'Вырезать\tCtrl+X',
+        disabled: isViewRoot,
+        run: () => {
+          const data = cutSelection(ws);
+          if (data) void navigator.clipboard?.writeText(data.text).catch(() => undefined);
+        },
+      },
+      {
+        label: 'Вставить\tCtrl+V',
+        run: async () => {
+          const text = await navigator.clipboard?.readText().catch(() => undefined);
+          pasteClipboard(ws, text === undefined ? {} : { text });
+        },
+      },
+      {
+        label: link?.type === 'node' ? 'Перейти по ссылке\tCtrl+щелчок' : 'Открыть ссылку\tCtrl+щелчок',
+        separator: true,
+        disabled: !link || link.type === 'file',
+        run: () => void openLink(ws, node.id),
+      },
+      {
+        label: link?.type === 'url' ? 'Изменить ссылку…' : 'Добавить ссылку…',
+        disabled: !!link && link.type !== 'url',
+        run: async () => {
+          const url = await promptDialog('Адрес ссылки (пусто — убрать ссылку)', link?.type === 'url' ? link.url : 'https://');
+          if (url !== null) setUrlLink(ws, node.id, url === 'https://' ? null : url);
+        },
+      },
+      {
+        label: node.collapsed ? 'Развернуть ветку\t+' : 'Свернуть ветку\t−',
+        separator: true,
+        disabled: node.children.length === 0 || node.parentId === null,
+        run: () => toggleCollapse(ws, node.id),
+      },
+      { label: 'Показать как отдельную карту\tF6', run: () => drillDown(ws) },
+      { label: 'Вынести на новый лист', disabled: node.parentId === null, run: () => extractSelectedToSheet(ws) },
+      { label: 'Удалить\tDel', separator: true, disabled: isViewRoot, run: () => removeSelected(ws) },
+    ]);
+  };
+
   // Clipboard events (not key handlers) give access to the system clipboard without a permission prompt.
   const onClipboardOut = (e: React.ClipboardEvent, data: ClipboardData | null) => {
     if (session.editing || e.target !== containerRef.current || !data) return;
@@ -283,6 +352,7 @@ export function MapCanvas({ ws, session }: { ws: Workspace; session: Session }) 
       className="map-canvas"
       tabIndex={0}
       onKeyDown={onKeyDown}
+      onContextMenu={onContextMenu}
       onCopy={(e) => onClipboardOut(e, copySelection(ws))}
       onCut={(e) => onClipboardOut(e, cutSelection(ws))}
       onPaste={(e) => {

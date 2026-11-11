@@ -3,11 +3,12 @@
 import { useEffect, useRef, useSyncExternalStore } from 'react';
 
 export interface MenuItem {
+  /** Text; a tab separates the shortcut hint shown on the right: 'Copy\tCtrl+C'. */
   label: string;
   disabled?: boolean;
   /** Draw a separator above this item. */
   separator?: boolean;
-  run(): void;
+  run(): void | Promise<void>;
 }
 
 let current: { x: number; y: number; items: MenuItem[] } | null = null;
@@ -79,10 +80,11 @@ export function MenuHost() {
             disabled={item.disabled}
             onClick={() => {
               hideMenu();
-              item.run();
+              void item.run();
             }}
           >
-            {item.label}
+            <span>{item.label.split('\t')[0]}</span>
+            {item.label.includes('\t') && <span className="shortcut">{item.label.split('\t')[1]}</span>}
           </button>
         </div>
       ))}

@@ -297,3 +297,13 @@ button.primary:hover:not(:disabled) {
   margin: 4px 2px;
   background: #dde2ea;
 }
+
+.context-menu button {
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.context-menu .shortcut {
+  color: #8191ad;
+}

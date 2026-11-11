@@ -91,7 +91,7 @@ test('svg: one shape or underline and one text per visible node, inside the view
   assert.equal((svg.match(/<text /g) ?? []).length, 3);
   assert.equal((svg.match(/<rect /g) ?? []).length, 1 + 3);
   assert.ok(svg.includes('>Project "X" &amp; Co</text>'));
-  assert.ok(svg.includes('>Risks &lt;high&gt;</text>'));
+  assert.ok(svg.includes('>Risks &lt;high&gt; 🔗</text>'));
   assert.equal(svg.includes(a11), false);
   const [, vx, vy, vw, vh] = /viewBox="(\S+) (\S+) (\S+) (\S+)"/.exec(svg)!.map(Number);
   for (const box of layout().boxes) {
