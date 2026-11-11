@@ -1,7 +1,7 @@
 // Extension host: owns the registries and gives extensions their context.
 
 import { validate } from '@oc/core';
-import { Session, execute } from '../state/store.ts';
+import { Session, execute, revealNode } from '../state/store.ts';
 import type { Workspace } from '../state/store.ts';
 import type { FileRef, StorageProvider } from '../storage/provider.ts';
 import { alertDialog } from '../ui/dialogs.tsx';
@@ -53,6 +53,7 @@ export class ExtensionHost {
         return ws.session?.viewRoots ?? [];
       },
       apply: (ops, label) => execute(ws, ops, label),
+      select: (id) => revealNode(ws, id),
       openDoc: (doc, name) => ws.add(new Session(doc, name)),
       subscribe: (listener) => ws.subscribe(listener),
     };

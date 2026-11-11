@@ -7,6 +7,7 @@ interface Request {
   kind: 'alert' | 'confirm' | 'prompt';
   message: string;
   okLabel: string;
+  cancelLabel: string;
   initial: string;
   resolve: (value: string | boolean | null) => void;
 }
@@ -20,9 +21,9 @@ function changed(): void {
   for (const listener of listeners) listener();
 }
 
-function open(kind: Request['kind'], message: string, okLabel: string, initial = ''): Promise<string | boolean | null> {
+function open(kind: Request['kind'], message: string, okLabel: string, initial = '', cancelLabel = 'Отмена'): Promise<string | boolean | null> {
   return new Promise((resolve) => {
-    queue.push({ kind, message, okLabel, initial, resolve });
+    queue.push({ kind, message, okLabel, cancelLabel, initial, resolve });
     changed();
   });
 }
@@ -36,8 +37,8 @@ export async function alertDialog(message: string): Promise<void> {
   await open('alert', message, 'OK');
 }
 
-export async function confirmDialog(message: string, okLabel = 'OK'): Promise<boolean> {
-  return (await open('confirm', message, okLabel)) === true;
+export async function confirmDialog(message: string, okLabel = 'OK', cancelLabel = 'Отмена'): Promise<boolean> {
+  return (await open('confirm', message, okLabel, '', cancelLabel)) === true;
 }
 
 /** Resolves with the entered text, or null when cancelled. */
@@ -82,7 +83,7 @@ export function DialogHost() {
         <p>{request.message}</p>
         {request.kind === 'prompt' && <input ref={input} defaultValue={request.initial} />}
         <div className="dialog-buttons">
-          {request.kind !== 'alert' && <button onClick={cancel}>Отмена</button>}
+          {request.kind !== 'alert' && <button onClick={cancel}>{request.cancelLabel}</button>}
           <button ref={ok} className="primary" onClick={accept}>
             {request.okLabel}
           </button>

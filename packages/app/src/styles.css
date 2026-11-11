@@ -367,3 +367,32 @@ button.icon {
 .map-canvas.linking {
   cursor: crosshair;
 }
+
+.reminder {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.reminder.past {
+  color: #8191ad;
+  text-decoration: line-through;
+}
+
+.reminder-link {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: none;
+  padding: 4px 2px;
+}
+
+.side input[type='datetime-local'],
+.side input[type='text'] {
+  width: 100%;
+  font: inherit;
+  padding: 4px 6px;
+  border: 1px solid #cfd6e2;
+  border-radius: 6px;
+}

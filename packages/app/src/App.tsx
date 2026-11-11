@@ -4,6 +4,7 @@ import { useEffect, useMemo, useSyncExternalStore } from 'react';
 import { builtinExtensions } from './ext/builtin/index.ts';
 import { ExtensionHost } from './ext/host.ts';
 import { openFile, saveFile, syncFromStorage } from './state/files.ts';
+import { dueReminders } from './state/reminders.ts';
 import {
   Session,
   Workspace,
@@ -19,6 +20,7 @@ import {
   newSession,
   redo,
   renameSheet,
+  revealNode,
   selectSheet,
   undo,
 } from './state/store.ts';
@@ -61,6 +63,47 @@ function writeDrafts(ws: Workspace): void {
   }
   for (const key of Object.keys(localStorage)) {
     if (key.startsWith(DRAFT_PREFIX) && !keep.has(key)) localStorage.removeItem(key);
+  }
+}
+
+// Reminders: announced once each. Ids of announced reminders are kept in localStorage.
+const ANNOUNCED_KEY = 'oc-announced-reminders';
+const REMINDER_CHECK_MS = 20_000;
+
+function loadAnnounced(): Set<string> {
+  try {
+    return new Set(JSON.parse(localStorage.getItem(ANNOUNCED_KEY) ?? '[]') as string[]);
+  } catch {
+    return new Set();
+  }
+}
+
+function markAnnounced(ids: string[]): void {
+  const all = [...loadAnnounced(), ...ids].slice(-1000);
+  localStorage.setItem(ANNOUNCED_KEY, JSON.stringify(all));
+}
+
+async function announceDueReminders(ws: Workspace): Promise<void> {
+  const announced = loadAnnounced();
+  const due = dueReminders(
+    ws.sessions.map((s) => s.doc),
+    Date.now(),
+    (id) => announced.has(id),
+  );
+  if (due.length === 0) return;
+  markAnnounced(due.map((d) => d.reminder.id));
+  for (const { doc, node, reminder } of due) {
+    const message = `Напоминание: «${node.text}»${reminder.text ? ` — ${reminder.text}` : ''}`;
+    if (typeof Notification !== 'undefined' && Notification.permission === 'granted' && document.visibilityState !== 'visible') {
+      new Notification('ObjectConnections', { body: message, tag: reminder.id });
+    }
+    if (await confirmDialog(message, 'Показать тему', 'Закрыть')) {
+      const session = ws.sessions.find((s) => s.doc === doc);
+      if (session) {
+        ws.activate(session);
+        revealNode(ws, node.id);
+      }
+    }
   }
 }
 
@@ -154,6 +197,12 @@ export function App() {
       window.removeEventListener('focus', check);
     };
   }, [host, ws]);
+
+  useEffect(() => {
+    void announceDueReminders(ws);
+    const timer = setInterval(() => void announceDueReminders(ws), REMINDER_CHECK_MS);
+    return () => clearInterval(timer);
+  }, [ws]);
 
   const closeSession = async (s: Session) => {
     const unsaved = s.dirty && (s.file || s.history.canUndo);

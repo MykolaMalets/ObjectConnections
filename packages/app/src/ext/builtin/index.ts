@@ -9,6 +9,7 @@ import { exportSvgExtension } from './exportSvg.ts';
 import { attributesExtension } from './attributes.tsx';
 import { notesExtension } from './notes.tsx';
 import { promptExtension } from './prompt.tsx';
+import { remindersExtension } from './reminders.tsx';
 
 const localFilesExtension: Extension = {
   id: 'builtin.local-files',
@@ -26,4 +27,5 @@ export const builtinExtensions: Extension[] = [
   notesExtension,
   attributesExtension,
   promptExtension,
+  remindersExtension,
 ];

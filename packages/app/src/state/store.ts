@@ -670,3 +670,26 @@ export function removeRelation(ws: Workspace, id: Id): void {
   run(s, [{ t: 'removeRelation', id }], 'Удалить связь');
   ws.notify();
 }
+
+/** Selects a topic anywhere in the document: switches sheet and leaves drill-down if needed, and scrolls to it. */
+export function revealNode(ws: Workspace, id: Id): void {
+  const s = ws.session;
+  const sheet = s && sheetOf(s.doc, id);
+  if (!s || !sheet) return;
+  if (sheet.id !== s.sheetId) {
+    s.sheetId = sheet.id;
+    s.focusPath = [];
+  } else if (s.focusId && !isAncestorOrSelf(s.doc, s.focusId, id)) {
+    s.focusPath = [];
+  }
+  // Open collapsed ancestors so the topic is visible.
+  const ops: Op[] = [];
+  for (let cur = getNode(s.doc, id)?.parentId ?? null; cur !== null; cur = getNode(s.doc, cur)?.parentId ?? null) {
+    const node = getNode(s.doc, cur)!;
+    if (node.collapsed) ops.push({ t: 'patchNode', id: cur, patch: { collapsed: null } });
+  }
+  if (ops.length) run(s, ops, 'Развернуть');
+  s.selection = id;
+  s.reveal = true;
+  ws.notify();
+}

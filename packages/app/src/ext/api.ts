@@ -27,6 +27,8 @@ export interface EditorApi {
   readonly viewRoots: Id[];
   /** Applies operations to the active document as one undo step. False when rejected or no file is open. */
   apply(ops: Op[], label: string): boolean;
+  /** Selects a topic of the active document, switching sheet and opening collapsed branches as needed. */
+  select(id: Id): void;
   /** Opens a document in a new tab (used by importers). */
   openDoc(doc: Doc, name: string): void;
   /** Called after every change of document, selection or view. */
