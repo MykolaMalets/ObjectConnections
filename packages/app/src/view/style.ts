@@ -29,6 +29,7 @@ export const COLORS = {
   toggleFill: '#ffffff',
   toggleStroke: '#8191ad',
   relation: '#c2410c',
+  match: '#ffd54a',
 };
 
 export const MAX_TEXT_WIDTH = 320;

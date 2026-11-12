@@ -155,6 +155,7 @@ export function MapCanvas({ ws, session }: { ws: Workspace; session: Session }) 
         selection: session.selection,
         dropTarget: dropTarget.current,
         editing: session.editing?.id ?? null,
+        highlights: session.highlights,
         relations: Object.values(session.doc.relations),
       });
     });

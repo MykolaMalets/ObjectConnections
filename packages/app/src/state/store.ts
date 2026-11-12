@@ -60,6 +60,8 @@ export class Session {
   saveError: string | null = null;
   /** The file changed outside the editor since it was read; autosave is paused. */
   conflict = false;
+  /** Topics found by the search bar, drawn with a marker; null when the search is closed. */
+  highlights: Set<Id> | null = null;
 
   constructor(doc: Doc, name: string) {
     this.history = Session.historyFor(doc);
@@ -678,6 +680,12 @@ export function removeRelation(ws: Workspace, id: Id): void {
 }
 
 /** Selects a topic anywhere in the document: switches sheet and leaves drill-down if needed, and scrolls to it. */
+/** Marks the topics found by a search (null removes the marks). */
+export function setHighlights(ws: Workspace, session: Session, ids: Id[] | null): void {
+  session.highlights = ids && ids.length ? new Set(ids) : null;
+  ws.notify();
+}
+
 export function revealNode(ws: Workspace, id: Id): void {
   const s = ws.session;
   const sheet = s && sheetOf(s.doc, id);

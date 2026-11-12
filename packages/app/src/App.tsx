@@ -1,6 +1,6 @@
 import type { Doc } from '@oc/core';
 import { getNode, validate } from '@oc/core';
-import { useEffect, useMemo, useSyncExternalStore } from 'react';
+import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { builtinExtensions } from './ext/builtin/index.ts';
 import { ExtensionHost } from './ext/host.ts';
 import { handleLaunchedFiles, openFile, saveFile, syncFromStorage } from './state/files.ts';
@@ -27,6 +27,7 @@ import {
 import { DialogHost, confirmDialog, promptDialog } from './ui/dialogs.tsx';
 import { MenuHost, showMenu } from './ui/menu.tsx';
 import { MapCanvas } from './view/MapCanvas.tsx';
+import { SearchBar } from './view/SearchBar.tsx';
 import { TouchBar, isTouchScreen } from './view/TouchBar.tsx';
 
 const AUTOSAVE_DELAY_MS = 1500;
@@ -146,6 +147,11 @@ export function App() {
   const version = useSyncExternalStore(ws.subscribe, ws.getVersion);
   const session = ws.session;
   const touch = useMemo(isTouchScreen, []);
+  const [searching, setSearching] = useState(false);
+  const closeSearch = () => {
+    setSearching(false);
+    document.querySelector<HTMLElement>('.map-canvas')?.focus();
+  };
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -159,6 +165,9 @@ export function App() {
       } else if (ctrl && !e.shiftKey && key === 'o') {
         e.preventDefault();
         void openFile(host);
+      } else if (ctrl && !e.shiftKey && key === 'f') {
+        e.preventDefault();
+        setSearching(true);
       } else if (!typing) {
         const command = host.commandForKey(e);
         if (command) {
@@ -265,6 +274,9 @@ export function App() {
         <button disabled={!session} onClick={() => session && void saveFile(host, session)} title="Ctrl+S">
           Сохранить
         </button>
+        <button disabled={!session} className={searching ? 'pressed' : ''} onClick={() => (searching ? closeSearch() : setSearching(true))} title="Ctrl+F">
+          Найти
+        </button>
         <span className="separator" />
         <button disabled={!session?.history.canUndo} onClick={() => undo(ws)} title="Ctrl+Z">↶</button>
         <button disabled={!session?.history.canRedo} onClick={() => redo(ws)} title="Ctrl+Y">↷</button>
@@ -335,6 +347,8 @@ export function App() {
           </div>
         ))}
       </div>
+
+      {session && searching && <SearchBar ws={ws} session={session} onClose={closeSearch} />}
 
       {session && session.focusPath.length > 0 && (
         <div className="breadcrumbs" onMouseDown={keepFocus}>

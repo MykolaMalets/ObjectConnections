@@ -17,6 +17,8 @@ export interface RenderState {
   dropTarget: Id | null;
   /** Box being edited: its text is hidden under the editor overlay. */
   editing: Id | null;
+  /** Topics found by a search. */
+  highlights?: Set<Id> | null;
   /** Relations whose both ends are laid out. */
   relations: { id: Id; from: Id; to: Id; text?: string }[];
 }
@@ -109,6 +111,12 @@ export function render(
     if (!visible(box)) continue;
     const style = levelStyle(box.depth);
     const readable = style.fontSize * view.scale >= MIN_TEXT_PX;
+    if (state.highlights?.has(box.id)) {
+      ctx.fillStyle = COLORS.match;
+      ctx.beginPath();
+      ctx.roundRect(box.x - 5, box.y - 5, box.w + 10, box.h + 10, style.radius + 5);
+      ctx.fill();
+    }
     if (style.fill) {
       ctx.fillStyle = style.fill;
       if (readable) {

@@ -489,3 +489,28 @@ button.icon {
   font-size: 18px;
   line-height: 1;
 }
+
+.search-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  background: #fff8db;
+  border-bottom: 1px solid #ecd98a;
+  flex: none;
+  overflow-x: auto;
+  white-space: nowrap;
+}
+
+.search-bar input {
+  flex: 1 1 160px;
+  min-width: 120px;
+  font: inherit;
+  padding: 4px 8px;
+  border: 1px solid #cfd6e2;
+  border-radius: 6px;
+}
+
+.search-status {
+  color: #66738a;
+}
