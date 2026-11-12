@@ -59,6 +59,11 @@ export interface ExportInput {
    * text formats). Picture formats (SVG, PDF) are built from it.
    */
   layout?: () => LayoutResult;
+  /**
+   * Draws an SVG picture into JPEG pixels (about twice the picture's size,
+   * less for very large maps). Provided by the editor; used by the PDF export.
+   */
+  rasterize?: (svg: string) => Promise<{ jpeg: Uint8Array; width: number; height: number }>;
 }
 
 export interface Exporter {

@@ -148,6 +148,7 @@ export class ExtensionHost {
           this.measure ??= createMeasure(document.createElement('canvas').getContext('2d')!);
           return layoutRoots(session.doc, session.viewRoots, session.sheet?.structure, this.measure, !!session.focusId);
         },
+        rasterize,
       });
       const blob = typeof result === 'string' ? new Blob([result], { type: exporter.mime }) : result;
       downloadBlob(blob, `${session.name}.${exporter.extension}`);
@@ -171,6 +172,35 @@ export class ExtensionHost {
       void alertDialog(`Импорт «${importer.title}» не удался: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
+}
+
+/** Pixels per picture pixel, and the canvas limits browsers enforce. */
+const RASTER_SCALE = 2;
+const MAX_CANVAS_SIDE = 16_384;
+const MAX_CANVAS_AREA = 64_000_000;
+
+/** Draws an SVG into JPEG pixels through an image element and a canvas. */
+async function rasterize(svg: string): Promise<{ jpeg: Uint8Array; width: number; height: number }> {
+  const size = /<svg[^>]* width="([\d.]+)" height="([\d.]+)"/.exec(svg);
+  if (!size) throw new Error('no picture size');
+  const w = Number(size[1]);
+  const h = Number(size[2]);
+  const scale = Math.min(RASTER_SCALE, MAX_CANVAS_SIDE / w, MAX_CANVAS_SIDE / h, Math.sqrt(MAX_CANVAS_AREA / (w * h)));
+  const width = Math.max(1, Math.floor(w * scale));
+  const height = Math.max(1, Math.floor(h * scale));
+  const image = new Image();
+  image.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+  await image.decode();
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d')!;
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, width, height);
+  ctx.drawImage(image, 0, 0, width, height);
+  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.92));
+  if (!blob) throw new Error('the browser could not draw the picture (map too large?)');
+  return { jpeg: new Uint8Array(await blob.arrayBuffer()), width, height };
 }
 
 function downloadBlob(blob: Blob, fileName: string): void {

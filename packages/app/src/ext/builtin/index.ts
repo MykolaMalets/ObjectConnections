@@ -7,6 +7,8 @@ import { googleCalendarExtension } from '../google/calendar.ts';
 import { googleDriveExtension } from '../google/drive.ts';
 import { exportFreeMindExtension } from './exportFreeMind.ts';
 import { exportMarkdownExtension } from './exportMarkdown.ts';
+import { exportPdfExtension } from './exportPdf.ts';
+import { exportWordExtension } from './exportWord.ts';
 import { exportSvgExtension } from './exportSvg.ts';
 import { attributesExtension } from './attributes.tsx';
 import { notesExtension } from './notes.tsx';
@@ -26,6 +28,8 @@ export const builtinExtensions: Extension[] = [
   googleDriveExtension,
   googleCalendarExtension,
   exportMarkdownExtension,
+  exportWordExtension,
+  exportPdfExtension,
   exportFreeMindExtension,
   exportSvgExtension,
   notesExtension,
