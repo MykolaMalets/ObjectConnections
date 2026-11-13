@@ -3,7 +3,7 @@
 // other same-origin files are cache-first (built assets have hashed names).
 // Bump CACHE when this file's caching rules change.
 
-const CACHE = 'oc-v1';
+const CACHE = 'oc-v2';
 const SHELL = ['./', './manifest.webmanifest', './icons/icon-192.png', './icons/favicon-32.png'];
 
 self.addEventListener('install', (event) => {
@@ -25,8 +25,10 @@ self.addEventListener('fetch', (event) => {
   if (request.method !== 'GET' || new URL(request.url).origin !== self.location.origin) return;
 
   if (request.mode === 'navigate') {
+    // 'no-cache' asks the server every time: GitHub Pages lets browsers keep the page
+    // for ten minutes, which made a fresh publish look like nothing had changed.
     event.respondWith(
-      fetch(request)
+      fetch(request, { cache: 'no-cache' })
         .then((response) => {
           const copy = response.clone();
           void caches.open(CACHE).then((cache) => cache.put('./', copy));

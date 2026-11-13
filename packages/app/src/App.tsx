@@ -109,6 +109,10 @@ async function announceDueReminders(ws: Workspace): Promise<void> {
   }
 }
 
+/** "сборка 24", with the commit and build time in the tooltip. */
+const BUILD_LABEL = __BUILD__.number === 'dev' ? 'сборка dev' : `сборка ${__BUILD__.number}`;
+const BUILD_TITLE = `${__BUILD__.sha || 'без git'} · ${new Date(__BUILD__.time).toLocaleString('ru-RU')}`;
+
 function createHost(): ExtensionHost {
   const ws = new Workspace();
   const host = new ExtensionHost(ws, builtinExtensions);
@@ -354,9 +358,12 @@ export function App() {
             </button>
           </div>
         ))}
+        <span className="build" title={BUILD_TITLE}>
+          {BUILD_LABEL}
+        </span>
       </div>
 
-      {session && searching && <SearchBar ws={ws} session={session} onClose={closeSearch} />}
+      {session && searching &&<SearchBar ws={ws} session={session} onClose={closeSearch} />}
 
       {session && session.focusPath.length > 0 && (
         <div className="breadcrumbs" onMouseDown={keepFocus}>

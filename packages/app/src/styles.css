@@ -514,3 +514,11 @@ button.icon {
 .search-status {
   color: #66738a;
 }
+
+.tabs .build {
+  margin-left: auto;
+  align-self: center;
+  padding: 0 8px 4px;
+  font-size: 11px;
+  color: #8191ad;
+}
