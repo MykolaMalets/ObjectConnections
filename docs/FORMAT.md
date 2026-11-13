@@ -31,7 +31,7 @@ Doc
 | `id`, `parentId`, `children` | Положение в дереве. У корня `parentId = null`. |
 | `text` | Заголовок узла. |
 | `notes` | Заметка в Markdown. |
-| `labels`, `markers` | Метки и id маркеров. |
+| `labels`, `markers` | Метки (строки без `#`) и id маркеров. Маркеры: `priority-1`…`priority-5` и `status-todo`, `status-doing`, `status-done`, `status-cancelled`, `status-waiting` (в каждой группе не больше одного), а также `flag`, `star`, `idea`, `question`, `important`, `warning`, `heart`, `person`, `date`, `money`. Таблица — `packages/app/src/view/markers.ts`; незнакомые id хранятся, но не рисуются. |
 | `attrs` | Значения атрибутов: `{ attrDefId → значение }`. |
 | `link` | Ссылка: `url`, `file` (относительный путь), `node` (id узла, в т.ч. в другом файле: `docId` + `path`). |
 | `prompt` | `{ text, status: draft \| queued \| running \| done \| error, scope: node \| subtree \| sheet, message? }`. |
@@ -39,7 +39,7 @@ Doc
 | `collapsed` | Свёрнута ли ветка. |
 | `structure` | Раскладка поддерева, если отличается от унаследованной. |
 | `position` | Координаты для корней и вручную сдвинутых узлов. |
-| `style` | Переопределения оформления. |
+| `style` | Переопределения оформления. Сейчас используется `style.color` — заливка темы, `#rrggbb`; другие значения редактор не рисует. |
 | `modified` | Время последней правки (ISO 8601), проставляет `History`. |
 | `ext` | Данные расширений. |
 
@@ -47,7 +47,7 @@ Doc
 
 ### Relation
 
-`{ id, from, to, text?, type?, style?, ext? }` — направленная связь между двумя любыми узлами. `type` — произвольная строка; в режиме графа это тип связи.
+`{ id, from, to, text?, type?, style?, ext? }` — направленная связь между двумя любыми узлами. `type` — произвольная строка; в режиме графа это тип связи. `style.bend` — изгиб линии: на сколько пикселей карты контрольные точки отходят от прямой (знак — в какую сторону); без него изгиб выбирается по расстоянию.
 
 ### AttrDef
 

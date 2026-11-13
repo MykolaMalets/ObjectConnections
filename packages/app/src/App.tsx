@@ -22,10 +22,12 @@ import {
   renameSheet,
   revealNode,
   selectSheet,
+  setSheetStructure,
   undo,
 } from './state/store.ts';
 import { DialogHost, confirmDialog, promptDialog } from './ui/dialogs.tsx';
 import { MenuHost, showMenu } from './ui/menu.tsx';
+import { STRUCTURES } from './view/layout.ts';
 import { MapCanvas } from './view/MapCanvas.tsx';
 import { SearchBar } from './view/SearchBar.tsx';
 import { TouchBar, isTouchScreen } from './view/TouchBar.tsx';
@@ -266,6 +268,11 @@ export function App() {
         separator: true,
         run: () => mergeSheetIntoSelection(ws, sheetId),
       },
+      ...STRUCTURES.map((structure, i) => ({
+        label: `${(sheets[index]?.structure ?? 'map') === structure.id ? '✓ ' : ' '}${structure.title}`,
+        separator: i === 0,
+        run: () => setSheetStructure(ws, sheetId, structure.id),
+      })),
       { label: 'Удалить лист…', disabled: sheets.length <= 1, separator: true, run: () => void deleteSheetAsk(s, sheetId) },
     ]);
   };

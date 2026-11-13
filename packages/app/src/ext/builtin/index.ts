@@ -15,6 +15,7 @@ import { attributesExtension } from './attributes.tsx';
 import { notesExtension } from './notes.tsx';
 import { promptExtension } from './prompt.tsx';
 import { remindersExtension } from './reminders.tsx';
+import { topicStyleExtension } from './topicStyle.tsx';
 
 const localFilesExtension: Extension = {
   id: 'builtin.local-files',
@@ -35,6 +36,7 @@ export const builtinExtensions: Extension[] = [
   importFreeMindExtension,
   exportSvgExtension,
   notesExtension,
+  topicStyleExtension,
   attributesExtension,
   promptExtension,
   remindersExtension,

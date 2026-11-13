@@ -124,7 +124,7 @@ test('layout of 5000 nodes is fast', () => {
 
 test('relation curves start and end on the boxes borders and bend away from the straight line', async () => {
   const { relationCurve } = await import('../src/view/layout.ts');
-  const box = (x: number, y: number) => ({ id: 'b', parentId: null, x, y, w: 100, h: 40, depth: 1, dir: 1 as const, lines: [], attrs: [], childCount: 0, collapsed: false });
+  const box = (x: number, y: number) => ({ id: 'b', parentId: null, x, y, w: 100, h: 40, depth: 1, dir: 1 as const, flow: 'map' as const, lines: [], attrs: [], childCount: 0, collapsed: false });
   const a = box(0, 0);
   const b = box(300, 200);
   const c = relationCurve(a, b);
@@ -212,4 +212,81 @@ test('drops land before, after or into a topic, and never into the dragged branc
   }
   // The root only takes children.
   assert.deepEqual(dropAt(doc, layout, grand[0] ?? a, ...at(root, 0.05)), { targetId: root, place: 'child' });
+});
+
+test('org chart and tree structures: no overlaps, children below, drops and arrows follow the flow', async () => {
+  const { TREE_INDENT, dropAt } = await import('../src/view/layout.ts');
+  // A random but repeatable tree of 60 topics with texts of different lengths.
+  let seed = 7;
+  const rand = (n: number) => ((seed = (seed * 9301 + 49297) % 233280), Math.floor((seed / 233280) * n));
+  const doc = createDoc('Корень');
+  const root = doc.sheets[0]!.rootIds[0]!;
+  const ids: Id[] = [root];
+  for (let i = 0; i < 60; i++) ids.push(add(doc, ids[rand(ids.length)]!, 'Тема'.repeat(1 + rand(4))));
+
+  for (const structure of ['org-chart', 'tree'] as const) {
+    const layout = layoutRoots(doc, [root], structure, measure);
+    assert.equal(layout.boxes.length, ids.length, structure);
+    assertNoOverlap(layout.boxes);
+    for (const box of layout.boxes) {
+      assert.equal(box.flow, structure === 'org-chart' ? 'org' : 'tree');
+      const parent = box.parentId ? layout.byId.get(box.parentId) : undefined;
+      if (!parent) continue;
+      assert.ok(box.y >= parent.y + parent.h, `${structure}: a child is below its parent`);
+      if (structure === 'tree') assert.equal(box.x, parent.x + TREE_INDENT);
+    }
+  }
+
+  const { doc: small, root: r, kids } = build();
+  const org = layoutRoots(small, [r], 'org-chart', measure);
+  const [a, b] = [org.byId.get(kids[0]!)!, org.byId.get(kids[1]!)!];
+  assert.equal(a.y, b.y, 'siblings share a row');
+  assert.ok(b.x > a.x + a.w, 'in order from left to right');
+  // The left edge of B drops before it, the middle into it.
+  assert.deepEqual(dropAt(small, org, kids[2]!, b.x + 2, b.y + b.h / 2), { targetId: kids[1], place: 'before' });
+  assert.deepEqual(dropAt(small, org, kids[2]!, b.x + b.w / 2, b.y + b.h / 2), { targetId: kids[1], place: 'child' });
+  assert.equal(neighbour(small, org, kids[0]!, 'right'), kids[1]);
+  assert.equal(neighbour(small, org, kids[0]!, 'up'), r);
+
+  const tree = layoutRoots(small, [r], 'tree', measure);
+  // Rows in reading order: root, A, A1, A2, A3, B…
+  assert.equal(neighbour(small, tree, r, 'down'), kids[0]);
+  assert.equal(neighbour(small, tree, kids[0]!, 'down'), small.nodes[kids[0]!]!.children[0]);
+  assert.equal(neighbour(small, tree, kids[1]!, 'left'), r);
+});
+
+test('relations: a click near the line finds it; the handle puts the curve through the pointer', async () => {
+  const { bendThrough, hitRelation, relationCurve } = await import('../src/view/layout.ts');
+  const { doc, root, kids } = build();
+  const layout = layoutRoots(doc, [root], 'logic-right', measure);
+  const [a, d] = [layout.byId.get(kids[0]!)!, layout.byId.get(kids[3]!)!];
+  const relations = [{ id: 'r', from: kids[0]!, to: kids[3]! }];
+  const c = relationCurve(a, d);
+  assert.equal(hitRelation(layout, relations, c.mx + 2, c.my - 2, 6), 'r');
+  assert.equal(hitRelation(layout, relations, c.mx + 40, c.my + 40, 6), undefined);
+
+  // Drag the handle to a point: the middle of the new curve is there.
+  const target = { x: c.mx + 30, y: c.my - 25 };
+  const bent = relationCurve(a, d, bendThrough(a, d, target.x, target.y));
+  // Only the distance across the line is controlled; along the line the middle stays put.
+  const straight = relationCurve(a, d, 0);
+  const len = Math.hypot(straight.x2 - straight.x1, straight.y2 - straight.y1);
+  const across = (px: number, py: number) => ((px - straight.x1) * -(straight.y2 - straight.y1) + (py - straight.y1) * (straight.x2 - straight.x1)) / len;
+  assert.ok(Math.abs(across(bent.mx, bent.my) - across(target.x, target.y)) < 1);
+});
+
+test('the bend is stored in the relation style and undone in one step', async () => {
+  const { Session, Workspace, setRelationBend, undo } = await import('../src/state/store.ts');
+  const { doc, kids } = build();
+  applyOps(doc, [{ t: 'putRelation', relation: { id: 'r', from: kids[0]!, to: kids[1]!, text: 'x', style: { color: 'red' } } }] as Op[]);
+  const ws = new Workspace();
+  const s = new Session(doc, 't');
+  ws.add(s);
+  setRelationBend(ws, 'r', -40);
+  assert.deepEqual(s.doc.relations['r']!.style, { color: 'red', bend: -40 });
+  assert.equal(s.doc.relations['r']!.text, 'x');
+  setRelationBend(ws, 'r', null);
+  assert.deepEqual(s.doc.relations['r']!.style, { color: 'red' });
+  undo(ws);
+  assert.deepEqual(s.doc.relations['r']!.style, { color: 'red', bend: -40 });
 });

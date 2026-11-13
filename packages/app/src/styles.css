@@ -522,3 +522,52 @@ button.icon {
   font-size: 11px;
   color: #8191ad;
 }
+
+.side h3 {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: #66738a;
+  font-weight: 600;
+}
+
+.swatches,
+.markers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.swatch {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border-radius: 50%;
+  border: 2px solid transparent;
+}
+
+.swatch.none {
+  border-color: #cfd6e2;
+  color: #8191ad;
+}
+
+.swatch.pressed {
+  border-color: #1f2733;
+}
+
+.marker {
+  min-width: 36px;
+  padding: 4px 6px;
+  font-size: 16px;
+  line-height: 1;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 8px;
+  border: 1px solid #cfd6e2;
+  border-radius: 12px;
+  background: #f3f6fb;
+  font-size: 12px;
+}

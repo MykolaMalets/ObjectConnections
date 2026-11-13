@@ -57,7 +57,7 @@ oc remove project.ocmap <id>
 
 ### Anything else
 
-Labels, links, attributes, relations between topics, sheets: use raw operations with `oc apply`. Their exact shape is in `<repo>/docs/FORMAT.md` (section «Операции»). Get fresh ids with `oc id 3`. Example — add a URL link and a label:
+Labels, links, attributes, relations between topics, sheets: use raw operations with `oc apply`. Their exact shape is in `<repo>/docs/FORMAT.md` (section «Операции»). Get fresh ids with `oc id 3`. Markers (`priority-1`…`priority-5`, `status-todo|doing|done|cancelled|waiting`, `flag`, `star`, `idea`, `question`, `important`, `warning`, …) and a topic colour (`"style":{"color":"#2f9e44"}`) are set the same way with `patchNode`; the marker ids are listed in FORMAT.md. Example — add a URL link and a label:
 
 ```
 echo '[{"t":"patchNode","id":"<id>","patch":{"link":{"type":"url","url":"https://example.com"},"labels":["todo"]}}]' | oc apply project.ocmap

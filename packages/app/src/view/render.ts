@@ -2,8 +2,8 @@
 
 import type { Id } from '@oc/core';
 import type { LayoutResult, NodeBox } from './layout.ts';
-import { TOGGLE_RADIUS, V_GAP, arrowHead, relationCurve, togglePoint } from './layout.ts';
-import { ATTR_STYLE, COLORS, attrColor, levelStyle } from './style.ts';
+import { ORG_GAP_X, TOGGLE_RADIUS, V_GAP, arrowHead, connector, relationBend, relationCurve, togglePoint } from './layout.ts';
+import { ATTR_STYLE, COLORS, levelStyle, topicLook } from './style.ts';
 
 /** screen = world * scale + (x, y) */
 export interface View {
@@ -15,6 +15,10 @@ export interface View {
 export interface RenderState {
   selection: Id | null;
   dropTarget: Id | null;
+  /** Other topics of a group selection, outlined like the primary one. */
+  selected?: ReadonlySet<Id>;
+  /** Selection frame being drawn, in map coordinates. */
+  band?: { x0: number; y0: number; x1: number; y1: number } | null;
   /** Insertion line for a drop between topics: drawn above or below this box. */
   dropLine?: { id: Id; place: 'before' | 'after' } | null;
   /** Box being edited: its text is hidden under the editor overlay. */
@@ -22,7 +26,11 @@ export interface RenderState {
   /** Topics found by a search. */
   highlights?: Set<Id> | null;
   /** Relations whose both ends are laid out. */
-  relations: { id: Id; from: Id; to: Id; text?: string }[];
+  relations: { id: Id; from: Id; to: Id; text?: string; style?: Record<string, unknown> }[];
+  /** Relation picked by the user: drawn thicker with a handle in the middle. */
+  selectedRelation?: Id | null;
+  /** Bend shown while the handle is dragged, before it is saved. */
+  bendPreview?: { id: Id; bend: number } | null;
 }
 
 /** Draws relations: dashed curves with an arrowhead and an optional label. */
@@ -37,7 +45,10 @@ function renderRelations(ctx: CanvasRenderingContext2D, layout: LayoutResult, vi
     const from = layout.byId.get(relation.from);
     const to = layout.byId.get(relation.to);
     if (!from || !to) continue;
-    const c = relationCurve(from, to);
+    const bend = state.bendPreview?.id === relation.id ? state.bendPreview.bend : relationBend(relation);
+    const c = relationCurve(from, to, from === to ? undefined : bend);
+    const picked = relation.id === state.selectedRelation;
+    ctx.lineWidth = picked ? 3 : 1.5;
     ctx.setLineDash([6, 4]);
     ctx.beginPath();
     ctx.moveTo(c.x1, c.y1);
@@ -59,11 +70,25 @@ function renderRelations(ctx: CanvasRenderingContext2D, layout: LayoutResult, vi
       ctx.fillStyle = COLORS.relation;
       ctx.fillText(relation.text, c.mx - w / 2 + 5, c.my);
     }
+    if (picked && from !== to) {
+      // Handle for changing the bend, kept the same size on screen.
+      ctx.beginPath();
+      ctx.arc(c.mx, c.my, RELATION_HANDLE_PX / view.scale, 0, Math.PI * 2);
+      ctx.fillStyle = '#ffffff';
+      ctx.fill();
+      ctx.lineWidth = 2 / view.scale;
+      ctx.strokeStyle = COLORS.relation;
+      ctx.stroke();
+      ctx.fillStyle = COLORS.relation;
+      ctx.strokeStyle = COLORS.relation;
+    }
   }
   ctx.restore();
 }
 
 const RELATION_FONT_SIZE = 12;
+/** Radius of the bend handle of a picked relation, in screen pixels. */
+export const RELATION_HANDLE_PX = 7;
 
 export function render(
   ctx: CanvasRenderingContext2D,
@@ -92,14 +117,14 @@ export function render(
     const parent = box.parentId && layout.byId.get(box.parentId);
     if (!parent) continue;
     if (Math.max(box.y, parent.y) > bottom || Math.min(box.y + box.h, parent.y + parent.h) < top) continue;
-    const x1 = box.dir > 0 ? parent.x + parent.w : parent.x;
-    const y1 = parent.y + parent.h / 2;
-    const x2 = box.dir > 0 ? box.x : box.x + box.w;
-    const y2 = box.y + box.h / 2;
-    if (Math.max(x1, x2) < left || Math.min(x1, x2) > right) continue;
-    const mid = (x1 + x2) / 2;
-    ctx.moveTo(x1, y1);
-    ctx.bezierCurveTo(mid, y1, mid, y2, x2, y2);
+    if (Math.max(box.x + box.w, parent.x + parent.w) < left || Math.min(box.x, parent.x) > right) continue;
+    const c = connector(parent, box);
+    if (c.kind === 'curve') {
+      ctx.moveTo(c.x1, c.y1);
+      ctx.bezierCurveTo(c.c1x, c.c1y, c.c2x, c.c2y, c.x2, c.y2);
+    } else {
+      c.points.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
+    }
   }
   ctx.stroke();
 
@@ -119,8 +144,9 @@ export function render(
       ctx.roundRect(box.x - 5, box.y - 5, box.w + 10, box.h + 10, style.radius + 5);
       ctx.fill();
     }
-    if (style.fill) {
-      ctx.fillStyle = style.fill;
+    const look = topicLook(box);
+    if (look.fill) {
+      ctx.fillStyle = look.fill;
       if (readable) {
         ctx.beginPath();
         ctx.roundRect(box.x, box.y, box.w, box.h, style.radius);
@@ -133,14 +159,14 @@ export function render(
       underlines.lineTo(box.x + box.w, box.y + box.h);
     }
     if (!readable) {
-      if (box.id === state.selection || box.id === state.dropTarget) {
+      if (box.id === state.selection || box.id === state.dropTarget || state.selected?.has(box.id)) {
         ctx.fillStyle = box.id === state.dropTarget ? COLORS.dropTarget : COLORS.selection;
         ctx.fillRect(box.x - 3, box.y - 3, box.w + 6, box.h + 6);
       }
       continue;
     }
     if (box.id !== state.editing) {
-      ctx.fillStyle = style.color;
+      ctx.fillStyle = look.color;
       ctx.font = style.font;
       let y = box.y + style.padY + style.lineHeight / 2;
       for (const line of box.lines) {
@@ -148,7 +174,7 @@ export function render(
         y += style.lineHeight;
       }
       if (box.attrs.length) {
-        ctx.fillStyle = attrColor(box.depth);
+        ctx.fillStyle = look.attr;
         ctx.font = ATTR_STYLE.font;
         y += ATTR_STYLE.gap - style.lineHeight / 2 + ATTR_STYLE.lineHeight / 2;
         for (const line of box.attrs) {
@@ -157,7 +183,7 @@ export function render(
         }
       }
     }
-    if (box.id === state.selection || box.id === state.dropTarget) {
+    if (box.id === state.selection || box.id === state.dropTarget || state.selected?.has(box.id)) {
       ctx.strokeStyle = box.id === state.dropTarget ? COLORS.dropTarget : COLORS.selection;
       ctx.lineWidth = 2;
       ctx.beginPath();
@@ -186,14 +212,29 @@ export function render(
   ctx.strokeStyle = COLORS.edge;
   ctx.lineWidth = 1.5;
   ctx.stroke(underlines);
+  if (state.band) {
+    const b = state.band;
+    ctx.fillStyle = 'rgba(47, 111, 237, 0.08)';
+    ctx.strokeStyle = 'rgba(47, 111, 237, 0.7)';
+    ctx.lineWidth = 1 / view.scale;
+    ctx.fillRect(Math.min(b.x0, b.x1), Math.min(b.y0, b.y1), Math.abs(b.x1 - b.x0), Math.abs(b.y1 - b.y0));
+    ctx.strokeRect(Math.min(b.x0, b.x1), Math.min(b.y0, b.y1), Math.abs(b.x1 - b.x0), Math.abs(b.y1 - b.y0));
+  }
   const line = state.dropLine && layout.byId.get(state.dropLine.id);
   if (line) {
-    const y = state.dropLine!.place === 'before' ? line.y - V_GAP / 2 : line.y + line.h + V_GAP / 2;
     ctx.strokeStyle = COLORS.dropTarget;
     ctx.lineWidth = 3;
     ctx.beginPath();
-    ctx.moveTo(line.x - 6, y);
-    ctx.lineTo(line.x + line.w + 6, y);
+    if (line.flow === 'org') {
+      // Neighbours stand side by side: a vertical line left or right of the topic.
+      const x = state.dropLine!.place === 'before' ? line.x - ORG_GAP_X / 2 : line.x + line.w + ORG_GAP_X / 2;
+      ctx.moveTo(x, line.y - 6);
+      ctx.lineTo(x, line.y + line.h + 6);
+    } else {
+      const y = state.dropLine!.place === 'before' ? line.y - V_GAP / 2 : line.y + line.h + V_GAP / 2;
+      ctx.moveTo(line.x - 6, y);
+      ctx.lineTo(line.x + line.w + 6, y);
+    }
     ctx.stroke();
   }
   renderRelations(ctx, layout, view, state);

@@ -41,7 +41,24 @@ export class Session {
   epoch = 0;
   name: string;
   sheetId: Id;
-  selection: Id | null;
+  /**
+   * Other selected topics besides `selection` (the primary one, where typing and
+   * new topics go). Setting `selection` to another topic clears them, so every
+   * action that moves the selection ends a group selection on its own.
+   */
+  readonly multi = new Set<Id>();
+  #selection: Id | null = null;
+  get selection(): Id | null {
+    return this.#selection;
+  }
+  set selection(id: Id | null) {
+    if (id !== this.#selection) this.multi.clear();
+    this.#selection = id;
+  }
+  /** Touch: taps add topics to the selection instead of replacing it. */
+  multiMode = false;
+  /** Relation picked by a click on its line; Delete removes it, its handle changes its bend. */
+  selectedRelation: Id | null = null;
   /** Drill-down stack: the last id is the node currently shown as the root. */
   focusPath: Id[] = [];
   view: View = { scale: 1, x: 0, y: 0 };
@@ -214,7 +231,121 @@ export function select(ws: Workspace, id: Id | null, reveal = false): void {
   const s = ws.session;
   if (!s) return;
   s.selection = id;
+  // A plain selection ends a group even when the primary topic stays the same.
+  s.multi.clear();
+  s.selectedRelation = null;
   s.reveal = reveal;
+  ws.notify();
+}
+
+// ---------------------------------------------------------------------------
+// Group selection
+
+/** Selected topics, primary first, that still exist. */
+export function selectedIds(s: Session): Id[] {
+  const ids = s.selection && getNode(s.doc, s.selection) ? [s.selection] : [];
+  for (const id of s.multi) if (getNode(s.doc, id) && id !== s.selection) ids.push(id);
+  return ids;
+}
+
+/**
+ * Selected topics without those inside another selected branch: what group
+ * actions move, copy or delete. In the order they appear on the map, not the
+ * order they were picked, so a moved or pasted group keeps its reading order.
+ */
+export function selectedBranches(s: Session): Id[] {
+  const ids = selectedIds(s);
+  const branches = new Set(ids.filter((id) => !ids.some((other) => other !== id && isAncestorOrSelf(s.doc, other, id))));
+  const ordered: Id[] = [];
+  const walk = (id: Id) => {
+    if (branches.has(id)) ordered.push(id);
+    for (const child of getNode(s.doc, id)?.children ?? []) walk(child);
+  };
+  for (const sheet of s.doc.sheets) for (const root of sheet.rootIds) walk(root);
+  return ordered;
+}
+
+/** Adds a topic to the selection or takes it out (Shift+click, taps in selection mode). */
+export function toggleSelected(ws: Workspace, id: Id): void {
+  const s = ws.session;
+  if (!s || !getNode(s.doc, id)) return;
+  const ids = selectedIds(s);
+  if (!ids.includes(id)) {
+    // The topic touched last becomes the primary one; the others stay selected.
+    const keep = ids;
+    s.selection = id;
+    for (const other of keep) s.multi.add(other);
+  } else if (ids.length > 1) {
+    const rest = ids.filter((x) => x !== id);
+    s.selection = rest[0]!;
+    for (const other of rest.slice(1)) s.multi.add(other);
+  }
+  ws.notify();
+}
+
+/** Selects these topics as a group; the first becomes the primary one. */
+export function selectMany(ws: Workspace, ids: Id[]): void {
+  const s = ws.session;
+  const existing = s ? ids.filter((id) => getNode(s.doc, id)) : [];
+  if (!s || existing.length === 0) return;
+  s.selection = existing[0]!;
+  for (const id of existing.slice(1)) s.multi.add(id);
+  ws.notify();
+}
+
+/** Ends a group selection, keeping the primary topic. */
+export function clearMulti(ws: Workspace): void {
+  const s = ws.session;
+  if (!s || (s.multi.size === 0 && !s.multiMode)) return;
+  s.multi.clear();
+  s.multiMode = false;
+  ws.notify();
+}
+
+/** Every topic shown on the sheet (inside the drill-down focus, if any), collapsed branches excluded. */
+export function selectAllVisible(ws: Workspace): void {
+  const s = ws.session;
+  if (!s) return;
+  const ids: Id[] = [];
+  const walk = (id: Id) => {
+    const node = getNode(s.doc, id);
+    if (!node) return;
+    ids.push(id);
+    if (!node.collapsed || id === s.focusId) for (const child of node.children) walk(child);
+  };
+  for (const id of s.viewRoots) walk(id);
+  const primary = s.selection && ids.includes(s.selection) ? s.selection : ids[0];
+  if (primary) selectMany(ws, [primary, ...ids.filter((id) => id !== primary)]);
+}
+
+/**
+ * Moves the selected branches (or just `id` when it is not part of a group)
+ * under `parentId`, keeping their order, starting at `index`.
+ */
+export function moveBranches(ws: Workspace, id: Id, parentId: Id, index?: number): void {
+  const s = ws.session;
+  if (!s) return;
+  const group = selectedIds(s).length > 1 && selectedIds(s).includes(id) ? selectedBranches(s) : [id];
+  if (group.length === 1) return reparent(ws, id, parentId, index);
+  const parent = getNode(s.doc, parentId);
+  if (!parent || group.some((g) => isAncestorOrSelf(s.doc, g, parentId))) return;
+  // Count the target position among the children that stay where they are.
+  const staying = parent.children.filter((c) => !group.includes(c));
+  let at = index ?? staying.length;
+  const ops: Op[] = [];
+  for (const g of group) {
+    const node = getNode(s.doc, g)!;
+    if (node.parentId === null && !s.focusId) continue; // free-standing maps stay maps
+    ops.push({ t: 'moveNode', id: g, parentId, index: at++ });
+    if (node.position) ops.push({ t: 'patchNode', id: g, patch: { position: null } });
+  }
+  if (parent.collapsed) ops.push({ t: 'patchNode', id: parentId, patch: { collapsed: null } });
+  const primary = s.selection;
+  const others = [...s.multi];
+  if (ops.length && run(s, ops, 'Перенести ветки')) {
+    s.selection = primary;
+    for (const o of others) s.multi.add(o);
+  }
   ws.notify();
 }
 
@@ -259,6 +390,7 @@ export function addFloating(ws: Workspace, position: { x: number; y: number }): 
 
 export function removeSelected(ws: Workspace, label = 'Удалить'): void {
   const s = ws.session;
+  if (s && s.multi.size > 0) return removeBranches(ws, label);
   const node = s?.selection ? getNode(s.doc, s.selection) : undefined;
   if (!s || !node || node.id === s.focusId) return;
   const siblings = node.parentId === null ? (s.sheet?.rootIds ?? []) : s.doc.nodes[node.parentId]!.children;
@@ -267,6 +399,32 @@ export function removeSelected(ws: Workspace, label = 'Удалить'): void {
   const next = siblings[index + 1] ?? siblings[index - 1] ?? node.parentId;
   if (run(s, [{ t: 'removeSubtree', id: node.id }], label)) {
     s.selection = next;
+    s.reveal = true;
+  }
+  ws.notify();
+}
+
+/** Removes every selected branch that may be removed (not the drill-down root, not the last map of the sheet). */
+function removeBranches(ws: Workspace, label: string): void {
+  const s = ws.session!;
+  // Topics that cannot go are set aside first, so they do not shelter the selected topics inside them.
+  let rootsLeft = s.sheet?.rootIds.length ?? 0;
+  const removable = selectedIds(s).filter((id) => {
+    if (id === s.focusId) return false;
+    if (getNode(s.doc, id)!.parentId !== null) return true;
+    if (rootsLeft <= 1) return false;
+    rootsLeft--;
+    return true;
+  });
+  const branches = removable.filter((id) => !removable.some((other) => other !== id && isAncestorOrSelf(s.doc, other, id)));
+  const ops: Op[] = [];
+  let next: Id | null = null;
+  for (const id of branches) {
+    next ??= getNode(s.doc, id)!.parentId;
+    ops.push({ t: 'removeSubtree', id });
+  }
+  if (ops.length && run(s, ops, label)) {
+    s.selection = next && getNode(s.doc, next) ? next : (s.sheet?.rootIds[0] ?? null);
     s.reveal = true;
   }
   ws.notify();
@@ -442,6 +600,16 @@ export function renameSheet(ws: Workspace, sheetId: Id, title: string): void {
   ws.notify();
 }
 
+/** Changes how the sheet's maps are laid out ('map', 'logic-right', 'org-chart', 'tree'). */
+export function setSheetStructure(ws: Workspace, sheetId: Id, structure: string): void {
+  const s = ws.session;
+  const sheet = s && getSheet(s.doc, sheetId);
+  if (!s || !sheet || (sheet.structure ?? 'map') === structure) return;
+  run(s, [{ t: 'patchSheet', id: sheetId, patch: { structure: structure === 'map' ? null : structure } }], 'Структура листа');
+  s.needsCenter = true;
+  ws.notify();
+}
+
 /** Moves the selected branch to its own sheet, leaving a link node behind. */
 export function extractSelectedToSheet(ws: Workspace): void {
   const s = ws.session;
@@ -465,8 +633,9 @@ export function extractSelectedToSheet(ws: Workspace): void {
 export const FRAGMENT_MIME = 'application/x-ocmap-fragment';
 
 export interface ClipboardData {
-  fragment: Fragment;
-  /** Indented outline of the branch, for pasting into other applications. */
+  /** One fragment per copied branch, in selection order. */
+  fragments: Fragment[];
+  /** Indented outline of the branches, for pasting into other applications. */
   text: string;
 }
 
@@ -489,9 +658,11 @@ function fragmentText(fragment: Fragment): string {
 /** Copies the selected branch. Returns what to put on the system clipboard. */
 export function copySelection(ws: Workspace): ClipboardData | null {
   const s = ws.session;
-  if (!s?.selection || !getNode(s.doc, s.selection)) return null;
-  const fragment = extractFragment(s.doc, s.selection);
-  lastCopy = { fragment, text: fragmentText(fragment) };
+  if (!s) return null;
+  const branches = selectedBranches(s);
+  if (branches.length === 0) return null;
+  const fragments = branches.map((id) => extractFragment(s.doc, id));
+  lastCopy = { fragments, text: fragments.map(fragmentText).join('') };
   return lastCopy;
 }
 
@@ -516,25 +687,31 @@ export function pasteClipboard(ws: Workspace, data: { fragmentJson?: string; tex
   const s = ws.session;
   const parent = s?.selection ? getNode(s.doc, s.selection) : undefined;
   if (!s || !parent) return;
-  let fragment: Fragment | undefined;
+  let fragments: Fragment[] | undefined;
   if (data.fragmentJson) {
     try {
+      // One fragment (older copies) or a list of them.
       const parsed: unknown = JSON.parse(data.fragmentJson);
-      if (isFragment(parsed)) fragment = parsed;
+      const list = Array.isArray(parsed) ? parsed : [parsed];
+      if (list.length && list.every(isFragment)) fragments = list as Fragment[];
     } catch {
       // Not ours; fall back to the text.
     }
   }
-  // Text we wrote ourselves stands for the richer fragment kept in memory.
-  if (!fragment && lastCopy && (!data.text || data.text === lastCopy.text)) fragment = lastCopy.fragment;
+  // Text we wrote ourselves stands for the richer fragments kept in memory.
+  if (!fragments && lastCopy && (!data.text || data.text === lastCopy.text)) fragments = lastCopy.fragments;
 
   let ops: Op[];
   let rootIds: Id[];
   try {
-    if (fragment) {
-      const imported = opsImportFragment(s.doc, fragment, { parentId: parent.id });
-      ops = imported.ops;
-      rootIds = [imported.rootId];
+    if (fragments) {
+      ops = [];
+      rootIds = [];
+      for (const fragment of fragments) {
+        const imported = opsImportFragment(s.doc, fragment, { parentId: parent.id });
+        ops.push(...imported.ops);
+        rootIds.push(imported.rootId);
+      }
     } else {
       const items = parseOutline(data.text ?? '');
       if (items.length === 0) return;
@@ -672,6 +849,27 @@ export function setRelationText(ws: Workspace, id: Id, text: string): void {
   const { text: _old, ...rest } = relation;
   const next: typeof relation = text.trim() ? { ...rest, text: text.trim() } : rest;
   run(s, [{ t: 'putRelation', relation: next }], 'Подпись связи');
+  ws.notify();
+}
+
+/** Picks a relation (null: none). */
+export function selectRelation(ws: Workspace, id: Id | null): void {
+  const s = ws.session;
+  if (!s || s.selectedRelation === id) return;
+  s.selectedRelation = id;
+  ws.notify();
+}
+
+/** Sets how far the relation's curve bends away from the straight line (null: the default bend). */
+export function setRelationBend(ws: Workspace, id: Id, bend: number | null): void {
+  const s = ws.session;
+  const relation = s?.doc.relations[id];
+  if (!s || !relation) return;
+  const { bend: _old, ...rest } = relation.style ?? {};
+  const style = bend === null ? rest : { ...rest, bend };
+  const { style: _style, ...plain } = relation;
+  const next: typeof relation = Object.keys(style).length ? { ...plain, style } : plain;
+  run(s, [{ t: 'putRelation', relation: next }], bend === null ? 'Сбросить изгиб' : 'Изгиб связи');
   ws.notify();
 }
 

@@ -2,7 +2,7 @@
 // Redo stays in the main toolbar: the bar has to fit a 360px wide phone.
 
 import type { Session, Workspace } from '../state/store.ts';
-import { addChild, addSibling, commitEdit, removeSelected, startEdit, undo } from '../state/store.ts';
+import { addChild, addSibling, clearMulti, commitEdit, removeSelected, selectedIds, startEdit, undo } from '../state/store.ts';
 import { showMenu } from '../ui/menu.tsx';
 import { nodeMenuItems } from './nodeMenu.ts';
 
@@ -38,6 +38,19 @@ export function TouchBar({ ws, session }: { ws: Workspace; session: Session }) {
       </button>
       <button disabled={isViewRoot} onClick={act(() => removeSelected(ws))}>
         Удалить
+      </button>
+      <button
+        className={session.multiMode ? 'pressed' : ''}
+        title="Выбор нескольких тем: тапы добавляют темы к выделению"
+        onClick={() => {
+          if (session.multiMode) clearMulti(ws);
+          else {
+            session.multiMode = true;
+            ws.notify();
+          }
+        }}
+      >
+        {session.multiMode ? `Выбор ${selectedIds(session).length}` : 'Выбор'}
       </button>
       <button
         disabled={!node}

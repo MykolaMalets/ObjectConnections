@@ -1,4 +1,5 @@
 import type { Doc, Id } from '@oc/core';
+import { markerGlyphs } from '../../view/markers.ts';
 import type { ExportInput, Extension } from '../api.ts';
 
 const oneLine = (text: string) => text.replace(/\s*\n\s*/g, ' ').trim();
@@ -6,7 +7,10 @@ const oneLine = (text: string) => text.replace(/\s*\n\s*/g, ' ').trim();
 function title(doc: Doc, id: Id): string {
   const node = doc.nodes[id]!;
   const text = oneLine(node.text) || '…';
-  return node.link?.type === 'url' ? `[${text}](${node.link.url})` : text;
+  const markers = markerGlyphs(node).join('');
+  const labels = (node.labels ?? []).map((l) => ` #${l}`).join('');
+  const linked = node.link?.type === 'url' ? `[${text}](${node.link.url})` : text;
+  return `${markers ? `${markers} ` : ''}${linked}${labels}`;
 }
 
 function attributes(doc: Doc, id: Id): string {

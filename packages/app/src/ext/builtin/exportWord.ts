@@ -6,6 +6,7 @@
 
 import type { Doc, Id } from '@oc/core';
 import type { ExportInput, Extension } from '../api.ts';
+import { markerGlyphs } from '../../view/markers.ts';
 import { zip } from './zip.ts';
 
 const HEADING_LEVELS = 6;
@@ -41,7 +42,8 @@ export function buildDocx({ doc, rootIds, name }: ExportInput): Uint8Array {
 
   const walk = (id: Id, depth: number): void => {
     const node = doc.nodes[id]!;
-    const text = oneLine(node.text) || '…';
+    const markers = markerGlyphs(node).join('');
+    const text = (markers ? `${markers} ` : '') + (oneLine(node.text) || '…');
     let content = run(depth < HEADING_LEVELS ? text : `• ${text}`);
     if (node.link?.type === 'url') {
       const rid = `rIdLink${links.length + 1}`;
@@ -52,7 +54,7 @@ export function buildDocx({ doc, rootIds, name }: ExportInput): Uint8Array {
     }
     const indent = depth < HEADING_LEVELS ? '' : `<w:ind w:left="${INDENT_TWIPS * (depth - HEADING_LEVELS + 1)}"/>`;
     body.push(paragraph(content, depth < HEADING_LEVELS ? `<w:pStyle w:val="Heading${depth + 1}"/>` : indent));
-    const attrs = attributesLine(doc, id);
+    const attrs = [(node.labels ?? []).map((l) => `#${l}`).join(' '), attributesLine(doc, id)].filter(Boolean).join(' · ');
     if (attrs) body.push(paragraph(run(attrs, '<w:i/>'), indent));
     for (const line of node.notes?.trim().split('\n') ?? []) {
       if (line.trim()) body.push(paragraph(run(line), indent));

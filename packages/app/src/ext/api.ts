@@ -23,6 +23,8 @@ export interface EditorApi {
   readonly fileName: string | null;
   readonly sheet: Sheet | null;
   readonly selection: Id | null;
+  /** Every selected topic, the primary one (`selection`) first. One item unless several are selected. */
+  readonly selectedIds: Id[];
   /** Roots currently shown: the drill-down focus, or every map of the sheet. */
   readonly viewRoots: Id[];
   /** Applies operations to the active document as one undo step. False when rejected or no file is open. */

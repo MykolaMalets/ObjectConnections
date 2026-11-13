@@ -1,7 +1,7 @@
 // Extension host: owns the registries and gives extensions their context.
 
 import { validate } from '@oc/core';
-import { Session, execute, revealNode } from '../state/store.ts';
+import { Session, execute, revealNode, selectedIds } from '../state/store.ts';
 import type { Workspace } from '../state/store.ts';
 import type { FileRef, StorageProvider } from '../storage/provider.ts';
 import { alertDialog } from '../ui/dialogs.tsx';
@@ -48,6 +48,9 @@ export class ExtensionHost {
       },
       get selection() {
         return ws.session?.selection ?? null;
+      },
+      get selectedIds() {
+        return ws.session ? selectedIds(ws.session) : [];
       },
       get viewRoots() {
         return ws.session?.viewRoots ?? [];

@@ -1,6 +1,6 @@
 import type { ExportInput, Extension } from '../api.ts';
-import { arrowHead, relationCurve } from '../../view/layout.ts';
-import { ATTR_STYLE, COLORS, attrColor, levelStyle } from '../../view/style.ts';
+import { arrowHead, connector, relationBend, relationCurve } from '../../view/layout.ts';
+import { ATTR_STYLE, COLORS, levelStyle, topicLook } from '../../view/style.ts';
 
 const PADDING = 24;
 
@@ -31,7 +31,7 @@ export function exportSvg(input: ExportInput): string {
     const from = byId.get(relation.from);
     const to = byId.get(relation.to);
     if (!from || !to) continue;
-    const c = relationCurve(from, to);
+    const c = relationCurve(from, to, from === to ? undefined : relationBend(relation));
     const [ax, ay, bx, by] = arrowHead(c.c2x, c.c2y, c.x2, c.y2);
     relations.push(
       `<path d="M${n(c.x1)} ${n(c.y1)}C${n(c.c1x)} ${n(c.c1y)} ${n(c.c2x)} ${n(c.c2y)} ${n(c.x2)} ${n(c.y2)}" fill="none" stroke="${COLORS.relation}" stroke-width="1.5" stroke-dasharray="6 4"/>`,
@@ -59,17 +59,18 @@ export function exportSvg(input: ExportInput): string {
   for (const box of boxes) {
     const parent = box.parentId ? byId.get(box.parentId) : undefined;
     if (parent) {
-      const x1 = box.dir > 0 ? parent.x + parent.w : parent.x;
-      const y1 = parent.y + parent.h / 2;
-      const x2 = box.dir > 0 ? box.x : box.x + box.w;
-      const y2 = box.y + box.h / 2;
-      const mid = (x1 + x2) / 2;
-      edges.push(`M${n(x1)} ${n(y1)}C${n(mid)} ${n(y1)} ${n(mid)} ${n(y2)} ${n(x2)} ${n(y2)}`);
+      const c = connector(parent, box);
+      edges.push(
+        c.kind === 'curve'
+          ? `M${n(c.x1)} ${n(c.y1)}C${n(c.c1x)} ${n(c.c1y)} ${n(c.c2x)} ${n(c.c2y)} ${n(c.x2)} ${n(c.y2)}`
+          : c.points.map(([x, y], i) => `${i ? 'L' : 'M'}${n(x)} ${n(y)}`).join(''),
+      );
     }
     const style = levelStyle(box.depth);
-    if (style.fill) {
+    const look = topicLook(box);
+    if (look.fill) {
       shapes.push(
-        `<rect x="${n(box.x)}" y="${n(box.y)}" width="${n(box.w)}" height="${n(box.h)}" rx="${style.radius}" fill="${style.fill}"/>`,
+        `<rect x="${n(box.x)}" y="${n(box.y)}" width="${n(box.w)}" height="${n(box.h)}" rx="${style.radius}" fill="${look.fill}"/>`,
       );
     } else {
       edges.push(`M${n(box.x)} ${n(box.y + box.h)}H${n(box.x + box.w)}`);
@@ -78,14 +79,14 @@ export function exportSvg(input: ExportInput): string {
     box.lines.forEach((line, index) => {
       const y = box.y + style.padY + style.lineHeight * (index + 0.5);
       texts.push(
-        `<text x="${n(box.x + style.padX)}" y="${n(y)}" font-size="${style.fontSize}" font-weight="${weight}" fill="${style.color}">${escapeXml(line)}</text>`,
+        `<text x="${n(box.x + style.padX)}" y="${n(y)}" font-size="${style.fontSize}" font-weight="${weight}" fill="${look.color}">${escapeXml(line)}</text>`,
       );
     });
     const attrTop = box.y + style.padY + style.lineHeight * box.lines.length + ATTR_STYLE.gap;
     box.attrs.forEach((line, index) => {
       const y = attrTop + ATTR_STYLE.lineHeight * (index + 0.5);
       texts.push(
-        `<text x="${n(box.x + style.padX)}" y="${n(y)}" font-size="${ATTR_STYLE.fontSize}" fill="${attrColor(box.depth)}">${escapeXml(line)}</text>`,
+        `<text x="${n(box.x + style.padX)}" y="${n(y)}" font-size="${ATTR_STYLE.fontSize}" fill="${look.attr}">${escapeXml(line)}</text>`,
       );
     });
   }

@@ -40,6 +40,37 @@ export const ATTR_STYLE = { font: `11px ${FAMILY}`, fontSize: 11, lineHeight: 15
 /** Attribute text colour: light on the filled root, muted elsewhere. */
 export const attrColor = (depth: number) => (depth === 0 ? 'rgba(255,255,255,0.85)' : '#5b6b85');
 
+/** Topic colours offered in the editor. */
+export const TOPIC_COLORS = [
+  '#e03131',
+  '#f76707',
+  '#f2c200',
+  '#2f9e44',
+  '#0c8599',
+  '#2f6fed',
+  '#7048e8',
+  '#c2255c',
+  '#868e96',
+  '#ffe8a3',
+  '#d3f9d8',
+  '#ffd8e4',
+];
+
+/** True when dark text reads better than white on this colour. */
+export function isLight(hex: string): boolean {
+  const n = parseInt(hex.slice(1), 16);
+  const [r, g, b] = [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+  return 0.299 * r + 0.587 * g + 0.114 * b > 160;
+}
+
+/** Fill, text and small-text colours of a box: the user's colour if set, else the level's. */
+export function topicLook(box: { depth: number; color?: string }): { fill: string | null; color: string; attr: string } {
+  const style = levelStyle(box.depth);
+  if (!box.color) return { fill: style.fill, color: style.color, attr: attrColor(box.depth) };
+  const light = isLight(box.color);
+  return { fill: box.color, color: light ? '#1f2733' : '#ffffff', attr: light ? '#4a5568' : 'rgba(255,255,255,0.85)' };
+}
+
 export function levelStyle(depth: number): LevelStyle {
   return LEVELS[Math.min(depth, LEVELS.length - 1)]!;
 }
