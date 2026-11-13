@@ -2,8 +2,8 @@
 
 import type { Id } from '@oc/core';
 import type { LayoutResult, NodeBox } from './layout.ts';
-import { TOGGLE_RADIUS, arrowHead, relationCurve, togglePoint } from './layout.ts';
-import { COLORS, levelStyle } from './style.ts';
+import { TOGGLE_RADIUS, V_GAP, arrowHead, relationCurve, togglePoint } from './layout.ts';
+import { ATTR_STYLE, COLORS, attrColor, levelStyle } from './style.ts';
 
 /** screen = world * scale + (x, y) */
 export interface View {
@@ -15,6 +15,8 @@ export interface View {
 export interface RenderState {
   selection: Id | null;
   dropTarget: Id | null;
+  /** Insertion line for a drop between topics: drawn above or below this box. */
+  dropLine?: { id: Id; place: 'before' | 'after' } | null;
   /** Box being edited: its text is hidden under the editor overlay. */
   editing: Id | null;
   /** Topics found by a search. */
@@ -145,6 +147,15 @@ export function render(
         ctx.fillText(line, box.x + style.padX, y);
         y += style.lineHeight;
       }
+      if (box.attrs.length) {
+        ctx.fillStyle = attrColor(box.depth);
+        ctx.font = ATTR_STYLE.font;
+        y += ATTR_STYLE.gap - style.lineHeight / 2 + ATTR_STYLE.lineHeight / 2;
+        for (const line of box.attrs) {
+          ctx.fillText(line, box.x + style.padX, y);
+          y += ATTR_STYLE.lineHeight;
+        }
+      }
     }
     if (box.id === state.selection || box.id === state.dropTarget) {
       ctx.strokeStyle = box.id === state.dropTarget ? COLORS.dropTarget : COLORS.selection;
@@ -175,6 +186,16 @@ export function render(
   ctx.strokeStyle = COLORS.edge;
   ctx.lineWidth = 1.5;
   ctx.stroke(underlines);
+  const line = state.dropLine && layout.byId.get(state.dropLine.id);
+  if (line) {
+    const y = state.dropLine!.place === 'before' ? line.y - V_GAP / 2 : line.y + line.h + V_GAP / 2;
+    ctx.strokeStyle = COLORS.dropTarget;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(line.x - 6, y);
+    ctx.lineTo(line.x + line.w + 6, y);
+    ctx.stroke();
+  }
   renderRelations(ctx, layout, view, state);
 }
 

@@ -1,5 +1,4 @@
 import type { Id } from '@oc/core';
-import { getNode, isAncestorOrSelf } from '@oc/core';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Session, Workspace } from '../state/store.ts';
 import {
@@ -29,8 +28,8 @@ import {
 import { showMenu } from '../ui/menu.tsx';
 import { nodeMenuItems } from './nodeMenu.ts';
 import type { ClipboardData } from '../state/store.ts';
-import type { Direction, LayoutResult, NodeBox } from './layout.ts';
-import { hitTest, hitToggle, layoutRoots, neighbour } from './layout.ts';
+import type { Direction, Drop, LayoutResult, NodeBox } from './layout.ts';
+import { dropAt, dropDestination, hitTest, hitToggle, layoutRoots, neighbour } from './layout.ts';
 import { render } from './render.ts';
 import { createMeasure, levelStyle } from './style.ts';
 
@@ -77,7 +76,7 @@ export function MapCanvas({ ws, session }: { ws: Workspace; session: Session }) 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [size, setSize] = useState({ w: 0, h: 0 });
   const drag = useRef<Drag | null>(null);
-  const dropTarget = useRef<Id | null>(null);
+  const dropTarget = useRef<Drop | null>(null);
   const cache = useRef<{ key: string; layout: LayoutResult } | null>(null);
   // Touch: fingers on the screen (container coordinates), the gesture they make, the previous tap.
   const fingers = useRef(new Map<number, { sx: number; sy: number }>());
@@ -85,6 +84,8 @@ export function MapCanvas({ ws, session }: { ws: Workspace; session: Session }) 
   const press = useRef<Press | null>(null);
   const lastTap = useRef<{ at: number; sx: number; sy: number } | null>(null);
   const lastPointerType = useRef('mouse');
+  /** Where a long press picked a topic up; its menu opens there if the finger lifts without moving. */
+  const held = useRef<{ clientX: number; clientY: number } | null>(null);
 
   const measure = useMemo(() => {
     const canvas = document.createElement('canvas');
@@ -153,7 +154,11 @@ export function MapCanvas({ ws, session }: { ws: Workspace; session: Session }) 
       }
       render(canvas.getContext('2d')!, getLayout(), session.view, size.w, size.h, dpr, {
         selection: session.selection,
-        dropTarget: dropTarget.current,
+        dropTarget: dropTarget.current?.place === 'child' ? dropTarget.current.targetId : null,
+        dropLine:
+          dropTarget.current && dropTarget.current.place !== 'child'
+            ? { id: dropTarget.current.targetId, place: dropTarget.current.place }
+            : null,
         editing: session.editing?.id ?? null,
         highlights: session.highlights,
         relations: Object.values(session.doc.relations),
@@ -260,9 +265,13 @@ export function MapCanvas({ ws, session }: { ws: Workspace; session: Session }) 
         const current = press.current;
         press.current = null;
         if (!current?.id) return;
-        drag.current = null;
+        // Held still: the topic is picked up. Moving the finger now drags it; letting go
+        // without moving opens its menu. The menu is not shown under a finger that is still
+        // down: Android would carry the long press over to it and cancel the touch.
+        drag.current = { kind: 'node', id: current.id, sx: current.sx, sy: current.sy, moved: false };
+        held.current = { clientX, clientY };
         navigator.vibrate?.(15);
-        showMenu(clientX, clientY, nodeMenuItems(ws, session, current.id, true));
+        select(ws, current.id);
       }, LONG_PRESS_MS),
     };
   };
@@ -296,6 +305,8 @@ export function MapCanvas({ ws, session }: { ws: Workspace; session: Session }) 
       view.x = d.vx + p.sx - d.sx;
       view.y = d.vy + p.sy - d.sy;
       ws.notify();
+    } else if (d?.kind === 'node') {
+      dragNodeMove(d, p, TAP_SLOP);
     }
   };
 
@@ -312,7 +323,19 @@ export function MapCanvas({ ws, session }: { ws: Workspace; session: Session }) 
       drag.current = rest ? { kind: 'pan', sx: rest.sx, sy: rest.sy, vx: view.x, vy: view.y } : null;
       return;
     }
+    const d = drag.current;
     drag.current = null;
+    if (d?.kind === 'node') {
+      const at = held.current;
+      held.current = null;
+      if (d.moved && e.type !== 'pointercancel') dragNodeEnd(d, locate(e));
+      else if (dropTarget.current) {
+        dropTarget.current = null;
+        ws.notify();
+      }
+      if (!d.moved && at && e.type !== 'pointercancel') showMenu(at.clientX, at.clientY, nodeMenuItems(ws, session, d.id, true));
+      return;
+    }
     const tap = press.current;
     if (!tap || e.type === 'pointercancel') {
       cancelPress();
@@ -365,6 +388,36 @@ export function MapCanvas({ ws, session }: { ws: Workspace; session: Session }) 
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
   };
 
+  /** A topic is being dragged: shows where it would land. */
+  const dragNodeMove = (d: Extract<Drag, { kind: 'node' }>, p: ReturnType<typeof locate>, slop: number) => {
+    if (!d.moved && Math.hypot(p.sx - d.sx, p.sy - d.sy) < slop) return;
+    d.moved = true;
+    const next = dropAt(session.doc, layout, d.id, p.x, p.y);
+    const current = dropTarget.current;
+    if (next?.targetId !== current?.targetId || next?.place !== current?.place) {
+      dropTarget.current = next;
+      ws.notify();
+    }
+  };
+
+  /** The dragged topic is let go: moves the branch, or moves a free-standing map to the new place. */
+  const dragNodeEnd = (d: Extract<Drag, { kind: 'node' }>, p: ReturnType<typeof locate>) => {
+    const drop = dropTarget.current;
+    dropTarget.current = null;
+    const box = layout.byId.get(d.id);
+    if (drop) {
+      const { parentId, index } = dropDestination(session.doc, d.id, drop);
+      reparent(ws, d.id, parentId, index);
+    } else if (box && box.parentId === null && !session.focusId) {
+      setRootPosition(ws, d.id, {
+        x: Math.round(box.x + box.w / 2 + (p.sx - d.sx) / view.scale),
+        y: Math.round(box.y + box.h / 2 + (p.sy - d.sy) / view.scale),
+      });
+    } else {
+      ws.notify();
+    }
+  };
+
   const onPointerMove = (e: React.PointerEvent) => {
     if (e.pointerType === 'touch') {
       onTouchMove(e);
@@ -379,17 +432,7 @@ export function MapCanvas({ ws, session }: { ws: Workspace; session: Session }) 
       ws.notify();
       return;
     }
-    if (!d.moved && Math.hypot(p.sx - d.sx, p.sy - d.sy) < 6) return;
-    d.moved = true;
-    const target = hitTest(layout, p.x, p.y);
-    const node = getNode(session.doc, d.id);
-    const valid =
-      target && node && target.id !== node.parentId && !isAncestorOrSelf(session.doc, d.id, target.id);
-    const next = valid ? target.id : null;
-    if (next !== dropTarget.current) {
-      dropTarget.current = next;
-      ws.notify();
-    }
+    dragNodeMove(d, p, 6);
   };
 
   const onPointerUp = (e: React.PointerEvent) => {
@@ -400,20 +443,7 @@ export function MapCanvas({ ws, session }: { ws: Workspace; session: Session }) 
     const d = drag.current;
     drag.current = null;
     if (!d || d.kind !== 'node' || !d.moved) return;
-    const target = dropTarget.current;
-    dropTarget.current = null;
-    const box = layout.byId.get(d.id);
-    if (target) {
-      reparent(ws, d.id, target);
-    } else if (box && box.parentId === null && !session.focusId) {
-      const p = locate(e);
-      setRootPosition(ws, d.id, {
-        x: Math.round(box.x + box.w / 2 + (p.sx - d.sx) / view.scale),
-        y: Math.round(box.y + box.h / 2 + (p.sy - d.sy) / view.scale),
-      });
-    } else {
-      ws.notify();
-    }
+    dragNodeEnd(d, locate(e));
   };
 
   const onDoubleClick = (e: React.MouseEvent) => {

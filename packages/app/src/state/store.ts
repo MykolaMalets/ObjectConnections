@@ -322,13 +322,16 @@ export function moveSibling(ws: Workspace, delta: number): void {
   ws.notify();
 }
 
-export function reparent(ws: Workspace, id: Id, parentId: Id): void {
+/** Moves a branch under another topic: last child, or at `index` among the other children. */
+export function reparent(ws: Workspace, id: Id, parentId: Id, index?: number): void {
   const s = ws.session;
   if (!s || id === parentId) return;
   const node = getNode(s.doc, id);
   const parent = getNode(s.doc, parentId);
-  if (!node || !parent || node.parentId === parentId) return;
-  const ops: Op[] = [{ t: 'moveNode', id, parentId }];
+  if (!node || !parent || (node.parentId === parentId && index === undefined)) return;
+  const move: Op = { t: 'moveNode', id, parentId };
+  if (index !== undefined) move.index = index;
+  const ops: Op[] = [move];
   if (node.position) ops.push({ t: 'patchNode', id, patch: { position: null } });
   if (parent.collapsed) ops.push({ t: 'patchNode', id: parentId, patch: { collapsed: null } });
   run(s, ops, 'Перенести ветку');

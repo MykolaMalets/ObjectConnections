@@ -34,6 +34,12 @@ export const COLORS = {
 
 export const MAX_TEXT_WIDTH = 320;
 
+/** Attribute lines under a topic's text. */
+export const ATTR_STYLE = { font: `11px ${FAMILY}`, fontSize: 11, lineHeight: 15, gap: 3 };
+
+/** Attribute text colour: light on the filled root, muted elsewhere. */
+export const attrColor = (depth: number) => (depth === 0 ? 'rgba(255,255,255,0.85)' : '#5b6b85');
+
 export function levelStyle(depth: number): LevelStyle {
   return LEVELS[Math.min(depth, LEVELS.length - 1)]!;
 }
@@ -41,9 +47,9 @@ export function levelStyle(depth: number): LevelStyle {
 /** Creates a caching text measurer backed by a canvas context. */
 export function createMeasure(ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D): Measure {
   const cache = new Map<string, TextSize>();
-  return (text, depth) => {
+  return (text, depth, attrs) => {
     const level = Math.min(depth, LEVELS.length - 1);
-    const key = `${level}|${text}`;
+    const key = attrs?.length ? `${level}|${text}|${attrs.join('\n')}` : `${level}|${text}`;
     const hit = cache.get(key);
     if (hit) return hit;
     const style = LEVELS[level]!;
@@ -65,10 +71,23 @@ export function createMeasure(ctx: CanvasRenderingContext2D | OffscreenCanvasRen
       lines.push(line);
       width = Math.max(width, ctx.measureText(line).width);
     }
+    let attrHeight = 0;
+    let shortened: string[] | undefined;
+    if (attrs?.length) {
+      ctx.font = ATTR_STYLE.font;
+      shortened = attrs.map((line) => {
+        let fitted = line;
+        while (fitted.length > 1 && ctx.measureText(fitted).width > MAX_TEXT_WIDTH) fitted = fitted.slice(0, -2) + '…';
+        width = Math.max(width, ctx.measureText(fitted).width);
+        return fitted;
+      });
+      attrHeight = ATTR_STYLE.gap + shortened.length * ATTR_STYLE.lineHeight;
+    }
     const size: TextSize = {
       w: Math.ceil(Math.max(width, 16)) + style.padX * 2,
-      h: lines.length * style.lineHeight + style.padY * 2,
+      h: lines.length * style.lineHeight + attrHeight + style.padY * 2,
       lines,
+      ...(shortened ? { attrs: shortened } : {}),
     };
     if (cache.size > 20000) cache.clear();
     cache.set(key, size);

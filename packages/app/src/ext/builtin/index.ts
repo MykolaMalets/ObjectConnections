@@ -6,6 +6,7 @@ import type { Extension } from '../api.ts';
 import { googleCalendarExtension } from '../google/calendar.ts';
 import { googleDriveExtension } from '../google/drive.ts';
 import { exportFreeMindExtension } from './exportFreeMind.ts';
+import { importFreeMindExtension } from './importFreeMind.ts';
 import { exportMarkdownExtension } from './exportMarkdown.ts';
 import { exportPdfExtension } from './exportPdf.ts';
 import { exportWordExtension } from './exportWord.ts';
@@ -31,6 +32,7 @@ export const builtinExtensions: Extension[] = [
   exportWordExtension,
   exportPdfExtension,
   exportFreeMindExtension,
+  importFreeMindExtension,
   exportSvgExtension,
   notesExtension,
   attributesExtension,

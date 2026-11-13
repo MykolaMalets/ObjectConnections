@@ -12,6 +12,9 @@ export interface MenuItem {
 }
 
 let current: { x: number; y: number; items: MenuItem[] } | null = null;
+let openedAt = 0;
+/** A click this soon after opening is the end of the gesture that opened the menu, not a choice. */
+const IGNORE_CLICKS_MS = 350;
 let version = 0;
 const listeners = new Set<() => void>();
 
@@ -22,6 +25,7 @@ function changed(): void {
 
 export function showMenu(x: number, y: number, items: MenuItem[]): void {
   current = { x, y, items };
+  openedAt = Date.now();
   changed();
 }
 
@@ -79,6 +83,7 @@ export function MenuHost() {
             role="menuitem"
             disabled={item.disabled}
             onClick={() => {
+              if (Date.now() - openedAt < IGNORE_CLICKS_MS) return;
               hideMenu();
               void item.run();
             }}

@@ -179,11 +179,19 @@ export function App() {
     const onBeforeUnload = (e: BeforeUnloadEvent) => {
       if (ws.sessions.some((s) => s.dirty && (s.file || s.history.canUndo))) e.preventDefault();
     };
+    // A long press on a phone, or a right click, would show the browser's own menu
+    // over the app (and on Android cancel the touch). Text fields keep it for copy and paste.
+    const onContextMenu = (e: Event) => {
+      const target = e.target as HTMLElement | null;
+      if (target?.tagName !== 'INPUT' && target?.tagName !== 'TEXTAREA') e.preventDefault();
+    };
     window.addEventListener('keydown', onKeyDown);
     window.addEventListener('beforeunload', onBeforeUnload);
+    window.addEventListener('contextmenu', onContextMenu);
     return () => {
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('beforeunload', onBeforeUnload);
+      window.removeEventListener('contextmenu', onContextMenu);
     };
   }, [host, ws]);
 

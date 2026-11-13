@@ -3,14 +3,18 @@
 
 import type { Doc, Id } from '@oc/core';
 import { getNode } from '@oc/core';
+import { attrText } from '../state/search.ts';
 
 export interface TextSize {
   w: number;
   h: number;
   lines: string[];
+  /** Attribute lines under the text, already shortened to fit; their height is part of `h`. */
+  attrs?: string[];
 }
 
-export type Measure = (text: string, depth: number) => TextSize;
+/** Measures a topic: its text in the style of its depth, plus optional attribute lines in a small font. */
+export type Measure = (text: string, depth: number, attrs?: string[]) => TextSize;
 
 export interface NodeBox {
   id: Id;
@@ -24,6 +28,8 @@ export interface NodeBox {
   /** Side of the root the branch grows to: 1 right, -1 left. */
   dir: 1 | -1;
   lines: string[];
+  /** Attribute lines drawn under the text. */
+  attrs: string[];
   childCount: number;
   collapsed: boolean;
 }
@@ -62,6 +68,26 @@ export function nodeIcons(doc: Doc, id: Id): string[] {
   return icons;
 }
 
+/** At most this many attribute lines are shown on a topic; the rest are counted in one more line. */
+export const MAX_ATTR_LINES = 5;
+
+/** "Name: value" for each attribute the topic has, in the order the attributes were defined. */
+export function attributeLines(doc: Doc, id: Id): string[] {
+  const attrs = doc.nodes[id]!.attrs;
+  if (!attrs) return [];
+  const lines: string[] = [];
+  for (const def of Object.values(doc.attrDefs)) {
+    const value = attrs[def.id];
+    if (value === undefined || (Array.isArray(value) && value.length === 0) || value === '') continue;
+    lines.push(`${def.name}: ${attrText(value)}`);
+  }
+  if (lines.length > MAX_ATTR_LINES) {
+    const rest = lines.length - (MAX_ATTR_LINES - 1);
+    return [...lines.slice(0, MAX_ATTR_LINES - 1), `ещё ${rest}…`];
+  }
+  return lines;
+}
+
 /** Text shown for a node: its title followed by its icons. */
 export function displayText(doc: Doc, id: Id): string {
   const node = doc.nodes[id]!;
@@ -88,7 +114,8 @@ export function layoutRoots(
   const measureTree = (id: Id, depth: number): number => {
     const node = doc.nodes[id]!;
     const children = node.collapsed && depth > 0 ? [] : node.children;
-    const size = measure(displayText(doc, id), depth);
+    const attrs = attributeLines(doc, id);
+    const size = measure(displayText(doc, id), depth, attrs.length ? attrs : undefined);
     let block = 0;
     for (const child of children) block += measureTree(child, depth + 1);
     block = Math.max(size.h, block + V_GAP * Math.max(0, children.length - 1));
@@ -112,6 +139,7 @@ export function layoutRoots(
       depth,
       dir,
       lines: size.lines,
+      attrs: size.attrs ?? [],
       childCount: node.children.length,
       collapsed: !!node.collapsed && depth > 0 && node.children.length > 0,
     };
@@ -168,6 +196,52 @@ export function hitTest(layout: LayoutResult, x: number, y: number): NodeBox | u
     if (x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) return b;
   }
   return undefined;
+}
+
+/** Where a dragged topic would land: as a child of the target, or as its sibling just before or after it. */
+export interface Drop {
+  targetId: Id;
+  place: 'child' | 'before' | 'after';
+}
+
+/** The upper and lower parts of a box (this share of its height) drop next to it; the middle drops into it. */
+const SIBLING_ZONE = 0.3;
+
+/**
+ * Drop under the point for a topic being dragged, or null where the drop would
+ * be impossible (into its own branch) or change nothing.
+ */
+export function dropAt(doc: Doc, layout: LayoutResult, draggedId: Id, x: number, y: number): Drop | null {
+  const box = hitTest(layout, x, y);
+  if (!box || isInBranch(doc, draggedId, box.id)) return null;
+  const dragged = doc.nodes[draggedId];
+  const target = doc.nodes[box.id];
+  if (!dragged || !target) return null;
+  const rel = (y - box.y) / box.h;
+  // A root of the view has no siblings to stand between.
+  const place: Drop['place'] =
+    box.parentId === null || target.parentId === null ? 'child' : rel < SIBLING_ZONE ? 'before' : rel > 1 - SIBLING_ZONE ? 'after' : 'child';
+  if (place === 'child') return dragged.parentId === box.id ? null : { targetId: box.id, place };
+  const siblings = doc.nodes[target.parentId!]!.children;
+  if (dragged.parentId === target.parentId) {
+    const from = siblings.indexOf(draggedId);
+    const at = siblings.indexOf(box.id);
+    if ((place === 'before' && at === from + 1) || (place === 'after' && at === from - 1)) return null;
+  }
+  return { targetId: box.id, place };
+}
+
+/** Parent and index (as `moveNode` expects them) for a drop. */
+export function dropDestination(doc: Doc, draggedId: Id, drop: Drop): { parentId: Id; index?: number } {
+  if (drop.place === 'child') return { parentId: drop.targetId };
+  const parentId = doc.nodes[drop.targetId]!.parentId!;
+  const siblings = doc.nodes[parentId]!.children.filter((id) => id !== draggedId);
+  return { parentId, index: siblings.indexOf(drop.targetId) + (drop.place === 'after' ? 1 : 0) };
+}
+
+function isInBranch(doc: Doc, branchId: Id, id: Id): boolean {
+  for (let cur: Id | null = id; cur !== null; cur = doc.nodes[cur]?.parentId ?? null) if (cur === branchId) return true;
+  return false;
 }
 
 export const TOGGLE_RADIUS = 7;

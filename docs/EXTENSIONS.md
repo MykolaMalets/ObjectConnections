@@ -27,7 +27,7 @@ export const myExtension: Extension = {
 |---|---|---|
 | `ctx.commands` | `Command` — действие с необязательной горячей клавишей | Кнопка на панели инструментов (`toolbar: true`) и/или сочетание клавиш |
 | `ctx.exporters` | `Exporter` — документ → строка или `Blob` | Меню «Экспорт…» |
-| `ctx.importers` | `Importer` — текст файла → `Doc` | Меню «Импорт…» (скрыто, пока импортёров нет) |
+| `ctx.importers` | `Importer` — текст файла → `Doc` | Меню «Импорт…» |
 | `ctx.panels` | `Panel` — React-содержимое боковой панели | Кнопка-переключатель справа на панели инструментов |
 | `ctx.storage` | `StorageProvider` — место хранения файлов | «Открыть» и «Сохранить»; первый зарегистрированный — по умолчанию |
 | `ctx.reminderSinks` | `ReminderSink` — внешний календарь для напоминаний | Состояние и кнопка подключения в панели «Напоминания»; синхронизация — сама после изменения напоминаний |
@@ -82,7 +82,7 @@ export const myExtension: Extension = {
 
 **Word.** `Exporter` с `Blob` `.docx`: структура заголовками, как в Markdown. Библиотека — с лицензией MIT/Apache.
 
-**Импорт FreeMind.** `Importer` с `extensions: ['.mm']`: разобрать XML через `DOMParser`, построить `Doc` функциями `createDoc`/`createNode` и операциями `insertSubtree`.
+**Импорт FreeMind.** Сделано: `ext/builtin/importFreeMind.ts`. XML разбирается своим небольшим читателем (`ext/builtin/xml.ts`), а не `DOMParser`: так импорт работает в тестах Node и пригоден для CLI.
 
 ## Чего в API пока нет
 

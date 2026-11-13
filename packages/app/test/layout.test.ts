@@ -124,7 +124,7 @@ test('layout of 5000 nodes is fast', () => {
 
 test('relation curves start and end on the boxes borders and bend away from the straight line', async () => {
   const { relationCurve } = await import('../src/view/layout.ts');
-  const box = (x: number, y: number) => ({ id: 'b', parentId: null, x, y, w: 100, h: 40, depth: 1, dir: 1 as const, lines: [], childCount: 0, collapsed: false });
+  const box = (x: number, y: number) => ({ id: 'b', parentId: null, x, y, w: 100, h: 40, depth: 1, dir: 1 as const, lines: [], attrs: [], childCount: 0, collapsed: false });
   const a = box(0, 0);
   const b = box(300, 200);
   const c = relationCurve(a, b);
@@ -138,4 +138,78 @@ test('relation curves start and end on the boxes borders and bend away from the 
   assert.ok(Math.abs(cross) / Math.hypot(c.x2 - c.x1, c.y2 - c.y1) > 10);
   const loop = relationCurve(a, a);
   assert.ok(loop.my < a.y);
+});
+
+test('attribute lines make room under the topic text without overlaps', async () => {
+  const { attributeLines, MAX_ATTR_LINES } = await import('../src/view/layout.ts');
+  // Like the real measure: attribute lines add their height and may widen the box.
+  const withAttrs: Measure = (text, _depth, attrs) => ({
+    w: 20 + Math.max(text.length, ...(attrs ?? []).map((a) => a.length)) * 7,
+    h: 24 + (attrs ? 3 + attrs.length * 15 : 0),
+    lines: [text],
+    ...(attrs ? { attrs } : {}),
+  });
+  const { doc, kids } = build();
+  applyOps(doc, [
+    { t: 'putAttrDef', def: { id: 'a1', name: 'Статус', type: 'select', options: ['готово'] } },
+    { t: 'putAttrDef', def: { id: 'a2', name: 'Срок', type: 'date' } },
+    { t: 'putAttrDef', def: { id: 'a3', name: 'Важно', type: 'bool' } },
+    { t: 'setAttr', id: kids[0]!, defId: 'a2', value: '2026-12-01' },
+    { t: 'setAttr', id: kids[0]!, defId: 'a1', value: 'готово' },
+    { t: 'setAttr', id: kids[0]!, defId: 'a3', value: true },
+  ] as Op[]);
+  // Order of definitions, not of assignment; booleans read as words.
+  assert.deepEqual(attributeLines(doc, kids[0]!), ['Статус: готово', 'Срок: 2026-12-01', 'Важно: да']);
+
+  const root = doc.sheets[0]!.rootIds[0]!;
+  const { boxes, byId } = layoutRoots(doc, [root], 'map', withAttrs);
+  const box = byId.get(kids[0]!)!;
+  assert.equal(box.h, 24 + 3 + 3 * 15);
+  assert.deepEqual(box.attrs, ['Статус: готово', 'Срок: 2026-12-01', 'Важно: да']);
+  for (const a of boxes) {
+    for (const b of boxes) {
+      if (a === b) continue;
+      const overlap = a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+      assert.ok(!overlap, `${a.id} overlaps ${b.id}`);
+    }
+  }
+
+  for (let i = 0; i < 4; i++) {
+    applyOps(doc, [
+      { t: 'putAttrDef', def: { id: `x${i}`, name: `Поле ${i}`, type: 'text' } },
+      { t: 'setAttr', id: kids[0]!, defId: `x${i}`, value: `значение ${i}` },
+    ] as Op[]);
+  }
+  const lines = attributeLines(doc, kids[0]!);
+  assert.equal(lines.length, MAX_ATTR_LINES);
+  assert.equal(lines.at(-1), 'ещё 3…');
+});
+
+test('drops land before, after or into a topic, and never into the dragged branch', async () => {
+  const { dropAt, dropDestination } = await import('../src/view/layout.ts');
+  const { doc, root, kids, grand } = build();
+  const layout = layoutRoots(doc, [root], 'map', measure);
+  const at = (id: Id, rel: number) => {
+    const b = layout.byId.get(id)!;
+    return [b.x + b.w / 2, b.y + b.h * rel] as const;
+  };
+  const [a, b, c] = kids as [Id, Id, Id];
+  // Into the middle of another topic: becomes its last child.
+  assert.deepEqual(dropAt(doc, layout, a, ...at(c, 0.5)), { targetId: c, place: 'child' });
+  // Upper part of C drops between B and C; index counts without A.
+  const before = dropAt(doc, layout, a, ...at(c, 0.1))!;
+  assert.deepEqual(before, { targetId: c, place: 'before' });
+  assert.deepEqual(dropDestination(doc, a, before), { parentId: root, index: 1 });
+  const after = dropAt(doc, layout, a, ...at(c, 0.9))!;
+  assert.deepEqual(dropDestination(doc, a, after), { parentId: root, index: 2 });
+  // No-ops: right after itself, onto its own parent, into its own branch.
+  assert.equal(dropAt(doc, layout, a, ...at(b, 0.1)), null);
+  assert.equal(dropAt(doc, layout, a, ...at(root, 0.5)), null);
+  if (grand[0]) {
+    const child = grand[0];
+    const parentOfChild = doc.nodes[child]!.parentId!;
+    assert.equal(dropAt(doc, layout, parentOfChild, ...at(child, 0.5)), null);
+  }
+  // The root only takes children.
+  assert.deepEqual(dropAt(doc, layout, grand[0] ?? a, ...at(root, 0.05)), { targetId: root, place: 'child' });
 });

@@ -1,6 +1,6 @@
 import type { ExportInput, Extension } from '../api.ts';
 import { arrowHead, relationCurve } from '../../view/layout.ts';
-import { COLORS, levelStyle } from '../../view/style.ts';
+import { ATTR_STYLE, COLORS, attrColor, levelStyle } from '../../view/style.ts';
 
 const PADDING = 24;
 
@@ -79,6 +79,13 @@ export function exportSvg(input: ExportInput): string {
       const y = box.y + style.padY + style.lineHeight * (index + 0.5);
       texts.push(
         `<text x="${n(box.x + style.padX)}" y="${n(y)}" font-size="${style.fontSize}" font-weight="${weight}" fill="${style.color}">${escapeXml(line)}</text>`,
+      );
+    });
+    const attrTop = box.y + style.padY + style.lineHeight * box.lines.length + ATTR_STYLE.gap;
+    box.attrs.forEach((line, index) => {
+      const y = attrTop + ATTR_STYLE.lineHeight * (index + 0.5);
+      texts.push(
+        `<text x="${n(box.x + style.padX)}" y="${n(y)}" font-size="${ATTR_STYLE.fontSize}" fill="${attrColor(box.depth)}">${escapeXml(line)}</text>`,
       );
     });
   }
